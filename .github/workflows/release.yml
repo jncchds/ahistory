@@ -54,9 +54,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -86,9 +86,9 @@ jobs:
             archive: tar
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -128,7 +128,7 @@ jobs:
         # file they have to chmod before it runs.
         run: tar -czf "ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}
           path: ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.*
@@ -142,7 +142,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
