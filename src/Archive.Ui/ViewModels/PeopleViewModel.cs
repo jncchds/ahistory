@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 
 namespace Archive.Ui.ViewModels;
 
@@ -13,7 +14,9 @@ namespace Archive.Ui.ViewModels;
 /// merging into the owner, which needs an explicit confirmation because it makes everything that
 /// contact ever said a statement about you.
 /// </remarks>
-public sealed partial class PeopleViewModel(ArchiveQueries queries, IdentityMerger merger) : ViewModelBase
+public sealed partial class PeopleViewModel(
+    ArchiveQueries queries, IdentityMerger merger, ILogger<PeopleViewModel>? logger = null)
+    : ViewModelBase(logger)
 {
     public override string Title => "People";
 

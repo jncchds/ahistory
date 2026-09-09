@@ -11,6 +11,11 @@
     <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
     <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />
     <ProjectReference Include="../Archive.Import/Archive.Import.csproj" />
+    <ProjectReference Include="..\Archive.Logging\Archive.Logging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
 </Project>

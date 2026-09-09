@@ -1,12 +1,15 @@
 using Archive.Core;
 using Archive.Data;
 using Archive.Import;
+using Archive.Logging;
 using Archive.Media;
 using Archive.Ui;
 using Archive.Ui.Services;
 using Archive.Ui.ViewModels;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog.Events;
 
 namespace Archive.Desktop;
 
@@ -22,23 +25,47 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        using var loggerFactory = ArchiveLog.Create(new LogSettings(
+            LogSettings.DefaultDirectory,
+            MinimumLevel: args.Contains("--verbose") ? LogEventLevel.Debug : LogEventLevel.Information));
+
+        var log = loggerFactory.CreateLogger("Archive.Desktop");
+
+        // A desktop app has no console anyone is watching, so a crash without this is a window
+        // that vanishes and a user with nothing to report.
+        ArchiveLog.CatchUnhandled(log);
+
         try
         {
             var options = ResolveOptions(args);
 
-            // Migrating before the window opens means a schema problem is a message on a console
+            // Migrating before the window opens means a schema problem is a message in the log
             // rather than a half-drawn window bound to tables that do not exist.
-            var database = new Database(options);
+            var database = new Database(options, loggerFactory.CreateLogger<Database>());
+
+            // The resolved path, not the raw argument: a relative path in the log is a path
+            // nobody can find again.
+            log.LogInformation(
+                "ahistory starting. Save {SavePath}, media {MediaPath}, logs {LogPath}.",
+                database.DatabasePath, options.ResolveMediaDirectory(), LogSettings.DefaultDirectory);
+
             database.Migrate();
             Directory.CreateDirectory(options.ResolveMediaDirectory());
 
-            App.Services = BuildContainer(options, database);
+            App.Services = BuildContainer(options, database, loggerFactory);
 
-            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            var exitCode = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+
+            log.LogInformation("ahistory exiting with code {ExitCode}.", exitCode);
+
+            return exitCode;
         }
         catch (Exception ex)
         {
+            log.LogCritical(ex, "ahistory failed to start.");
             Console.Error.WriteLine($"ahistory failed to start: {ex.Message}");
+            Console.Error.WriteLine($"Details in {LogSettings.DefaultDirectory}");
+
             return 1;
         }
     }
@@ -48,9 +75,14 @@ internal static class Program
             .UsePlatformDetect()
             .LogToTrace();
 
-    private static ServiceProvider BuildContainer(ArchiveOptions options, Database database)
+    private static ServiceProvider BuildContainer(
+        ArchiveOptions options, Database database, ILoggerFactory loggerFactory)
     {
         var services = new ServiceCollection();
+
+        // The factory the head already built, so everything logs to one file with one policy.
+        services.AddSingleton(loggerFactory);
+        services.AddLogging();
 
         services.AddSingleton(options);
         services.AddSingleton(database);

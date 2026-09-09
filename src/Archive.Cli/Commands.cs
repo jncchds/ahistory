@@ -2,13 +2,19 @@ using Archive.Core;
 using Archive.Data;
 using Archive.Import;
 using Archive.Media;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Archive.Cli;
 
 internal static class Commands
 {
-    internal static int Run(string[] args)
+    private static ILoggerFactory _loggerFactory = NullLoggerFactory.Instance;
+
+    internal static int Run(string[] args, ILoggerFactory loggerFactory)
     {
+        _loggerFactory = loggerFactory;
+
         if (args.Length == 0)
         {
             return Usage();
@@ -62,7 +68,7 @@ internal static class Commands
 
         Directory.CreateDirectory(options.ResolveMediaDirectory());
 
-        var database = new Database(options);
+        var database = new Database(options, _loggerFactory.CreateLogger<Database>());
         database.Migrate();
 
         Console.WriteLine($"save     {database.DatabasePath}");
@@ -138,11 +144,11 @@ internal static class Commands
         var options = new ArchiveOptions { DatabasePath = args[1] };
         options.Validate();
 
-        var database = new Database(options);
+        var database = new Database(options, _loggerFactory.CreateLogger<Database>());
         database.Migrate();
 
         var mediaStore = new FileSystemMediaStore(options);
-        var runner = new ImportRunner(database, mediaStore);
+        var runner = new ImportRunner(database, mediaStore, _loggerFactory.CreateLogger<ImportRunner>());
 
         // Auto-detection suggests; the caller decides. --source is how a scripted caller answers
         // the question the import UI will ask.

@@ -305,3 +305,44 @@ in: a handful, not a function of archive size.
 **Group context is fetched on expand, not with the page.** Most group lines are never expanded,
 and fetching ±8 messages for every one of them would multiply each page load by the context
 radius for content nobody asked to see.
+
+---
+
+## D16 — Logging: Serilog in the heads, abstractions everywhere else, and a privacy rule with teeth
+
+**Layering.** `Archive.Data`, `Archive.Import`, `Archive.Media` and `Archive.Ui` reference only
+`Microsoft.Extensions.Logging.Abstractions` and take an optional `ILogger`. The heads choose the
+implementation. `Archive.Logging` exists because both heads need the identical configuration and
+the alternative was duplicating it — it depends on Core alone, and the desktop head's dependency
+on it is the one exception the "thin head" test now allows.
+
+Loggers are optional parameters defaulting to `NullLogger`, so every existing call site and test
+kept working and a missing registration degrades to silence rather than a startup crash.
+
+**Serilog for the file sink**, rather than hand-rolling one. Rotation, retention, size limits and
+concurrent writes are all easy to get subtly wrong, and none of that is this project's problem to
+solve. It stays in the heads.
+
+**Logs live under application data, never beside the save.** A save is meant to be copied and
+moved as a unit (P7), and logs riding along with it is exactly how a diagnostic file ends up
+somewhere nobody intended.
+
+### The privacy rule is the point
+
+This archive is people's private correspondence. A log that quotes it is as sensitive as the
+archive itself, while being far more likely to be attached to a bug report or pasted into an
+issue. So: **counts, identifiers, durations and error types — never content, never names.** Not
+just message text; a list of who someone talks to is as revealing as what they said, so chat and
+contact display names are out too. Things are referred to by id.
+
+The one deliberate exception is the export folder path, logged once when an import starts: the
+user chose it, and an import that cannot say where it read from is very hard to diagnose.
+
+`LoggingPrivacyTests` runs a real import at Debug level through a capturing logger and asserts
+that none of the fixture's own words — message text, chat names, contact names — appear anywhere
+in the output. It is paired with a test that the log is still *useful*, because a privacy rule
+that produces a silent app has failed differently.
+
+The negative control was run deliberately: replacing `{ThreadId}` with `{ThreadName}` in one
+Debug line makes the test fail. The failure mode being guarded against is not malice, it is
+someone adding one helpful-looking chat name six months from now.

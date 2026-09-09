@@ -5,6 +5,7 @@
     <Project Path="src/Archive.Data/Archive.Data.csproj" />
     <Project Path="src/Archive.Desktop/Archive.Desktop.csproj" />
     <Project Path="src/Archive.Import/Archive.Import.csproj" />
+    <Project Path="src/Archive.Logging/Archive.Logging.csproj" />
     <Project Path="src/Archive.Media/Archive.Media.csproj" />
     <Project Path="src/Archive.Ui/Archive.Ui.csproj" />
   </Folder>

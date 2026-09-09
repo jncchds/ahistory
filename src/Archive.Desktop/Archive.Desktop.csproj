@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Archive.Ui/Archive.Ui.csproj" />
+    <ProjectReference Include="..\Archive.Logging\Archive.Logging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

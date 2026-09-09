@@ -3,6 +3,7 @@ using Archive.Import;
 using Archive.Ui.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 
 namespace Archive.Ui.ViewModels;
 
@@ -10,7 +11,9 @@ namespace Archive.Ui.ViewModels;
 /// <param name="IsNew">True for the option that creates a source rather than extending one.</param>
 public sealed record SourceChoice(string Id, string Display, bool IsNew, bool IsSuggested);
 
-public sealed partial class ImportViewModel(ImportRunner runner, IFolderPicker folderPicker) : ViewModelBase
+public sealed partial class ImportViewModel(
+    ImportRunner runner, IFolderPicker folderPicker, ILogger<ImportViewModel>? logger = null)
+    : ViewModelBase(logger)
 {
     public override string Title => "Import";
 
@@ -145,6 +148,11 @@ public sealed partial class ImportViewModel(ImportRunner runner, IFolderPicker f
         }
         catch (Exception ex)
         {
+            // This path does not go through RunAsync, so it needs its own record. An import is
+            // the longest and most failure-prone thing the app does; losing the reason is the
+            // difference between a fixable bug and "it didn't work".
+            Log.LogError(ex, "Import from the desktop app failed.");
+
             Error = ex.Message;
         }
         finally

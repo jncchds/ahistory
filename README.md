@@ -123,6 +123,20 @@ then environment variables prefixed `AHISTORY_` with `__` for nesting — for ex
 `AHISTORY_Archive__DatabasePath`. Invalid configuration throws at startup rather than surfacing
 later as a broken window.
 
+## Logs
+
+Logs go to `ahistory/logs` under your local application data — deliberately not beside the save,
+which is meant to be copied around as a unit. They roll daily and are kept for two weeks.
+
+**A log is safe to attach to a bug report.** It records counts, identifiers, durations and error
+types; never message text, never chat or contact names. Things are referred to by id, so
+`telegram:100` tells a diagnostic everything and a stranger nothing. The one exception is the
+export folder path, recorded once per import, because you chose it and an import that cannot say
+where it read from is hard to diagnose. There is a test that runs a real import and fails if any
+of the fixture's own words reach the log.
+
+Pass `--verbose` to either the app or the CLI for debug-level detail.
+
 ## Documentation
 
 - **[message-archive-design.md](message-archive-design.md)** — the authoritative design spec.

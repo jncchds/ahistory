@@ -28,12 +28,21 @@ public sealed class SolutionLayoutTests
         Assert.Empty(references);
     }
 
+    /// <summary>
+    /// The desktop head stays thin: the UI, and the logging setup it has to choose.
+    /// </summary>
+    /// <remarks>
+    /// A head that reaches straight into Archive.Data or Archive.Import has started doing work
+    /// that belongs in a view model, where it cannot be tested without a window. Logging is the
+    /// one exception by nature — picking sinks is a hosting decision, and it is what keeps the
+    /// libraries on abstractions only.
+    /// </remarks>
     [Fact]
-    public void The_desktop_head_depends_only_on_the_ui_project()
+    public void The_desktop_head_depends_only_on_the_ui_and_logging_projects()
     {
         var references = ProjectReferencesOf("src/Archive.Desktop/Archive.Desktop.csproj");
 
-        Assert.Equal(["Archive.Ui"], references);
+        Assert.Equal(["Archive.Logging", "Archive.Ui"], references);
     }
 
     [Fact]
@@ -66,7 +75,7 @@ public sealed class SolutionLayoutTests
         string[] spine =
         [
             "Archive.Core", "Archive.Data", "Archive.Import", "Archive.Media",
-            "Archive.Ui", "Archive.Desktop", "Archive.Cli",
+            "Archive.Logging", "Archive.Ui", "Archive.Desktop", "Archive.Cli",
         ];
 
         // Substrings, matched case-insensitively against package ids.

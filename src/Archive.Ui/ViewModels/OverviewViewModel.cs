@@ -1,9 +1,11 @@
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.Logging;
 
 namespace Archive.Ui.ViewModels;
 
-public sealed partial class OverviewViewModel(ArchiveQueries queries) : ViewModelBase
+public sealed partial class OverviewViewModel(ArchiveQueries queries, ILogger<OverviewViewModel>? logger = null)
+    : ViewModelBase(logger)
 {
     public override string Title => "Overview";
 

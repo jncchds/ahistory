@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 
 namespace Archive.Ui.ViewModels;
 
@@ -13,7 +14,8 @@ namespace Archive.Ui.ViewModels;
 /// thread and the group messages they sent. This page stays afterwards: when a group line reads
 /// as nonsense out of context, the thread it came from is where you go to read around it (§4).
 /// </remarks>
-public sealed partial class ThreadsViewModel(ArchiveQueries queries) : ViewModelBase
+public sealed partial class ThreadsViewModel(ArchiveQueries queries, ILogger<ThreadsViewModel>? logger = null)
+    : ViewModelBase(logger)
 {
     /// <summary>Page size. Small enough that the first screen is instant on a large thread.</summary>
     private const int PageSize = 100;

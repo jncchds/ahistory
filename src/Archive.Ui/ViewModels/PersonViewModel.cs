@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 
 namespace Archive.Ui.ViewModels;
 
@@ -13,7 +14,9 @@ namespace Archive.Ui.ViewModels;
 /// ordered stream — assembled by query, because group messages are stored once in their real
 /// thread and never copied per participant.
 /// </remarks>
-public sealed partial class PersonViewModel(ArchiveQueries queries, PersonConversation conversation) : ViewModelBase
+public sealed partial class PersonViewModel(
+    ArchiveQueries queries, PersonConversation conversation, ILogger<PersonViewModel>? logger = null)
+    : ViewModelBase(logger)
 {
     private const int PageSize = 100;
 

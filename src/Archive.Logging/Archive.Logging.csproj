@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+  <!--
+    Support for the heads (Cli, Desktop): they both need identical logging, and the alternative
+    was duplicating the configuration in each. Depends on Core only.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+</Project>

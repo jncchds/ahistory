@@ -1,8 +1,11 @@
 using System.Data;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using Archive.Core;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Archive.Data;
 
@@ -28,13 +31,15 @@ public sealed class Database
     private static readonly string ResourcePrefix = typeof(Database).Namespace + ".Migrations.";
 
     private readonly ArchiveOptions _options;
+    private readonly ILogger _log;
 
-    public Database(ArchiveOptions options)
+    public Database(ArchiveOptions options, ILogger<Database>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
 
         _options = options;
+        _log = logger ?? NullLogger<Database>.Instance;
         ConnectionString = new SqliteConnectionStringBuilder
         {
             DataSource = Path.GetFullPath(options.DatabasePath),
@@ -126,6 +131,10 @@ public sealed class Database
                 continue;
             }
 
+            // Migration names are our own file names, so they carry nothing personal.
+            _log.LogInformation("Applying migration {Migration}.", name);
+
+            var stopwatch = Stopwatch.StartNew();
             using var transaction = connection.BeginTransaction();
 
             try
@@ -142,10 +151,16 @@ public sealed class Database
                 record.ExecuteNonQuery();
 
                 transaction.Commit();
+
+                _log.LogInformation(
+                    "Applied migration {Migration} in {ElapsedMs} ms.", name, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
+
+                _log.LogError(ex, "Migration {Migration} failed and was rolled back.", name);
+
                 throw new InvalidOperationException($"Migration '{name}' failed: {ex.Message}", ex);
             }
         }

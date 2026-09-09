@@ -1,10 +1,21 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Archive.Ui.ViewModels;
 
 /// <summary>Base for every page view model.</summary>
-public abstract partial class ViewModelBase : ObservableObject
+public abstract partial class ViewModelBase(ILogger? logger = null) : ObservableObject
 {
+    /// <summary>
+    /// Where failures go.
+    /// </summary>
+    /// <remarks>
+    /// Optional so tests can construct a page without ceremony, and so a missing registration
+    /// degrades to silence rather than a startup crash.
+    /// </remarks>
+    protected ILogger Log { get; } = logger ?? NullLogger.Instance;
+
     /// <summary>What the navigation sidebar calls this page.</summary>
     public abstract string Title { get; }
 
@@ -50,6 +61,10 @@ public abstract partial class ViewModelBase : ObservableObject
         }
         catch (Exception ex)
         {
+            // The user sees ex.Message; without this, that is the only place it ever existed.
+            // "It said something went wrong and then I closed it" is not a bug report.
+            Log.LogError(ex, "{Page} failed.", GetType().Name);
+
             Error = ex.Message;
             return false;
         }

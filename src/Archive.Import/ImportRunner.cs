@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Archive.Data;
 using Archive.Import.Telegram;
 using Archive.Media;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Archive.Import;
 
@@ -18,19 +21,12 @@ public sealed record ImportProgress(string CurrentChat, long MessagesSeen, long 
 /// <c>result.json</c>, <c>result2.json</c> and so on — all of which are one logical import with
 /// one import row.
 /// </remarks>
-public sealed class ImportRunner(Database database, IMediaStore mediaStore)
+public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILogger<ImportRunner>? logger = null)
 {
     private readonly Database _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly IMediaStore _mediaStore = mediaStore ?? throw new ArgumentNullException(nameof(mediaStore));
+    private readonly ILogger _log = logger ?? NullLogger<ImportRunner>.Instance;
 
-    /// <summary>
-    /// Imports a Telegram export folder.
-    /// </summary>
-    /// <param name="exportFolder">Folder containing result.json and its media directories.</param>
-    /// <param name="onProgress">
-    /// Called as messages are committed. The caller marshals to a UI thread if it needs to;
-    /// nothing here touches one.
-    /// </param>
     /// <summary>
     /// Inspects an export folder without writing anything, so the caller can ask the user which
     /// source it belongs to.
@@ -46,6 +42,15 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
         return ImportSourceResolver.Preview(_database, folder, files);
     }
 
+    /// <summary>
+    /// Imports a Telegram export folder.
+    /// </summary>
+    /// <param name="exportFolder">Folder containing result.json and its media directories.</param>
+    /// <param name="onProgress">
+    /// Called as messages are committed. The caller marshals to a UI thread if it needs to;
+    /// nothing here touches one.
+    /// </param>
+    /// <param name="batchSize">Messages per transaction.</param>
     /// <param name="sourceId">
     /// The source to attribute this run to. Null takes the preview's suggestion, which is what a
     /// non-interactive caller wants; the UI passes the user's answer instead.
@@ -69,9 +74,18 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
         using var committer = new ImportCommitter(
             _database, TelegramNormalizer.Platform, resolvedSource, label, folder, Fingerprint(files), batchSize);
 
+        // The folder path is the one piece of user-chosen text logged here on purpose: an import
+        // that cannot say where it read from is very hard to diagnose. Nothing from inside the
+        // export is written to the log.
+        _log.LogInformation(
+            "Import {ImportId} starting from {ExportFolder} ({FileCount} file(s)) into source {SourceId}.",
+            committer.ImportId, folder, files.Length, resolvedSource);
+
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
-            var sink = new CommittingSink(committer, _mediaStore, folder, onProgress);
+            var sink = new CommittingSink(committer, _mediaStore, folder, onProgress, _log);
 
             foreach (var file in files)
             {
@@ -80,13 +94,41 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
             }
 
             committer.Complete();
-            return committer.Stats;
+
+            var stats = committer.Stats;
+            var seconds = stopwatch.Elapsed.TotalSeconds;
+
+            _log.LogInformation(
+                "Import {ImportId} finished in {ElapsedMs} ms ({Rate:F0} messages/sec): "
+                + "seen {Seen}, inserted {Inserted}, skipped {Skipped}, revised {Revised}, "
+                + "media stored {MediaStored}, deduplicated {MediaDeduplicated}, "
+                + "missing {MediaMissing}, not found {MediaNotFound}.",
+                committer.ImportId, stopwatch.ElapsedMilliseconds,
+                seconds > 0 ? stats.MessagesSeen / seconds : 0,
+                stats.MessagesSeen, stats.MessagesInserted, stats.MessagesSkipped, stats.MessagesRevised,
+                stats.MediaStored, stats.MediaDeduplicated, stats.MediaMissing, stats.MediaNotFound);
+
+            // Referenced but absent files mean the export folder was moved or partially copied,
+            // which silently costs attachments. Worth noticing without failing the import.
+            if (stats.MediaNotFound > 0)
+            {
+                _log.LogWarning(
+                    "{Count} attachment(s) were referenced by the export but not present in the folder.",
+                    stats.MediaNotFound);
+            }
+
+            return stats;
         }
         catch (Exception ex)
         {
             // The import row is left marked failed with its error, rather than looking as though
             // it succeeded with fewer messages than it should have.
             committer.Fail(ex.Message);
+
+            _log.LogError(
+                ex, "Import {ImportId} failed after {ElapsedMs} ms and {Seen} message(s).",
+                committer.ImportId, stopwatch.ElapsedMilliseconds, committer.Stats.MessagesSeen);
+
             throw;
         }
     }
@@ -157,7 +199,8 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
         ImportCommitter committer,
         IMediaStore mediaStore,
         string exportFolder,
-        Action<ImportProgress>? onProgress) : ITelegramExportSink
+        Action<ImportProgress>? onProgress,
+        ILogger log) : ITelegramExportSink
     {
         private string _currentChat = string.Empty;
 
@@ -167,6 +210,11 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
         {
             _currentChat = chat.Name ?? chat.SourceThreadId;
             committer.EnsureThread(chat.SourceThreadId, chat.ThreadKind, chat.Name);
+
+            // The chat's id and kind, never its name: a list of who someone talks to is exactly
+            // the sort of thing a log must not quietly accumulate.
+            log.LogDebug(
+                "Reading chat {ThreadId} ({ThreadKind}).", chat.SourceThreadId, chat.ThreadKind);
         }
 
         public void OnMessage(TelegramChatHeader chat, JsonElement message)
@@ -213,10 +261,29 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
             if (!File.Exists(path))
             {
                 committer.Stats.MediaNotFound++;
+
+                // The relative path inside the export, not the absolute one, and never the
+                // message it belonged to.
+                log.LogDebug("Attachment {ExportPath} is referenced but absent.", media.ExportPath);
+
                 return null;
             }
 
-            var result = mediaStore.PutFileAsync(path).GetAwaiter().GetResult();
+            MediaPutResult result;
+
+            try
+            {
+                result = mediaStore.PutFileAsync(path).GetAwaiter().GetResult();
+            }
+            catch (IOException ex)
+            {
+                // One unreadable file must not cost the whole import. §2's principle applied to
+                // a different failure: a missing photo never costs you the message.
+                committer.Stats.MediaNotFound++;
+                log.LogWarning(ex, "Could not store attachment {ExportPath}; continuing.", media.ExportPath);
+
+                return null;
+            }
 
             if (result.WasNew)
             {

@@ -71,7 +71,16 @@ keeps message uids unambiguous — Telegram private-chat ids are relative to who
 them, so two different people's archives in one save would collide. An archive someone gave you
 belongs in its own save (§9, decisions.md D13).
 
-**P6 — The save is portable, the app is not.** A `.db` plus its media folder must open on
+**P6 — A log must be safe to attach to a bug report.** The archive is people's private
+correspondence, and a log that quotes it is as sensitive as the archive itself while being far
+more likely to be copied somewhere else. Log **counts, identifiers, durations and error types.
+Never content, never names** — no message text, no chat or contact display names, no entity or
+raw export JSON, no search terms. Refer to things by id: `telegram:100` tells a diagnostic
+everything and a stranger nothing. The one deliberate exception is the export folder path,
+logged once per import, because the user chose it and an import that cannot say where it read
+from is very hard to diagnose. Enforced by `LoggingPrivacyTests` against a real import.
+
+**P7 — The save is portable, the app is not.** A `.db` plus its media folder must open on
 Windows, Linux and macOS. No absolute paths in the database, no assumed path separator.
 
 ---
