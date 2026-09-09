@@ -29,6 +29,7 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
     public DbSet<Media> Media => Set<Media>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageImport> MessageImports => Set<MessageImport>();
     public DbSet<MessageRevision> MessageRevisions => Set<MessageRevision>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
     public DbSet<MessageMedia> MessageMedia => Set<MessageMedia>();
@@ -127,6 +128,7 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.Hash).HasColumnName("hash");
             e.Property(x => x.ByteSize).HasColumnName("byte_size");
             e.Property(x => x.Mime).HasColumnName("mime");
+            e.Property(x => x.Extension).HasColumnName("extension");
             e.Property(x => x.MediaKind).HasColumnName("media_kind");
             e.Property(x => x.Width).HasColumnName("width");
             e.Property(x => x.Height).HasColumnName("height");
@@ -174,6 +176,16 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.RawJson).HasColumnName("raw_json");
             e.Property(x => x.FirstImportId).HasColumnName("first_import_id");
             e.Property(x => x.ImporterVersion).HasColumnName("importer_version");
+        });
+
+        b.Entity<MessageImport>(e =>
+        {
+            e.ToTable("message_import");
+            e.HasKey(x => new { x.MessageId, x.ImportId });
+            e.Property(x => x.MessageId).HasColumnName("message_id");
+            e.Property(x => x.ImportId).HasColumnName("import_id");
+            e.Property(x => x.IsFirst).HasColumnName("is_first");
+            e.Property(x => x.SeenUtc).HasColumnName("seen_utc");
         });
 
         b.Entity<MessageRevision>(e =>

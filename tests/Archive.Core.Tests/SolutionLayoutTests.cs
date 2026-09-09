@@ -49,6 +49,53 @@ public sealed class SolutionLayoutTests
         }
     }
 
+    /// <summary>
+    /// AGENTS.md P1: the archive is a chat history app first, and must build and run with no AI
+    /// component present at all.
+    /// </summary>
+    /// <remarks>
+    /// This is enforced by a test rather than by intention because the erosion is always
+    /// reasonable-looking: one embedding call added to a query path, one model client injected
+    /// into a view model, and suddenly opening your own history depends on a runtime being
+    /// installed and a background job having finished. AI belongs in its own projects, which
+    /// the spine must never reference.
+    /// </remarks>
+    [Fact]
+    public void No_core_project_takes_an_ai_dependency()
+    {
+        string[] spine =
+        [
+            "Archive.Core", "Archive.Data", "Archive.Import", "Archive.Media",
+            "Archive.Ui", "Archive.Desktop", "Archive.Cli",
+        ];
+
+        // Substrings, matched case-insensitively against package ids.
+        string[] forbidden =
+        [
+            "whisper", "onnx", "llama", "openai", "anthropic", "semantickernel",
+            "semantic.kernel", "tensorflow", "torch", "transformers", "ollama",
+            "sqlite-vec", "sqlitevec", "embedding", "ml.net", "microsoft.ml",
+        ];
+
+        foreach (var project in SourceProjects().Where(p => spine.Contains(ProjectName(p))))
+        {
+            var packages = XDocument.Load(project)
+                .Descendants("PackageReference")
+                .Select(r => r.Attribute("Include")?.Value ?? string.Empty);
+
+            foreach (var package in packages)
+            {
+                var hit = forbidden.FirstOrDefault(f =>
+                    package.Contains(f, StringComparison.OrdinalIgnoreCase));
+
+                Assert.True(
+                    hit is null,
+                    $"{ProjectName(project)} references '{package}'. AGENTS.md P1: the archive must "
+                    + "build and run with no AI component. Put this in a separate project.");
+            }
+        }
+    }
+
     [Fact]
     public void No_project_repeats_a_shared_build_property()
     {

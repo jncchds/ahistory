@@ -94,6 +94,10 @@ CREATE TABLE media (
     hash             TEXT PRIMARY KEY,
     byte_size        INTEGER NOT NULL,
     mime             TEXT,
+    -- Part of the on-disk filename, not decoration. V1 opens audio and video in the OS default
+    -- handler (decisions.md D7), and every desktop platform picks that handler by extension —
+    -- an extensionless file simply fails to open.
+    extension        TEXT,
     media_kind       TEXT NOT NULL CHECK (media_kind IN
         ('photo', 'video', 'voice', 'video_message', 'audio', 'sticker', 'animation', 'file', 'thumbnail')),
     width            INTEGER,
@@ -168,6 +172,28 @@ CREATE INDEX ix_message_sender_time  ON message (sender_identity_id, sent_at_uni
 CREATE INDEX ix_message_content_hash ON message (content_hash);
 CREATE INDEX ix_message_reply        ON message (reply_to_uid) WHERE reply_to_uid IS NOT NULL;
 CREATE INDEX ix_message_session      ON message (session_id) WHERE session_id IS NOT NULL;
+
+-- Every import a message was seen in, not just the one that discovered it.
+--
+-- message.first_import_id answers "where did this row come from"; that is provenance and it
+-- never changes. This table answers a different question: "which exports contain this message",
+-- which is what the UI filters on. The two diverge as soon as exports overlap — the common case
+-- is a fresh export of a chat you already imported, where most messages are in both.
+--
+-- It also makes an import reversible: the messages that belong only to import X are the ones
+-- with no other row here, so a bad or unwanted import can be withdrawn without touching the
+-- rest of the archive.
+CREATE TABLE message_import (
+    message_id INTEGER NOT NULL REFERENCES message (id) ON DELETE CASCADE,
+    import_id  TEXT    NOT NULL REFERENCES import (id) ON DELETE CASCADE,
+    -- 1 when this import is where the message first appeared. Denormalized from
+    -- message.first_import_id so "what did this import actually add?" is one indexed read.
+    is_first   INTEGER NOT NULL DEFAULT 0 CHECK (is_first IN (0, 1)),
+    seen_utc   TEXT    NOT NULL,
+    PRIMARY KEY (message_id, import_id)
+) STRICT;
+
+CREATE INDEX ix_message_import_import ON message_import (import_id, message_id);
 
 -- Not in the spec, but present in exports: a later export of the same chat can carry different
 -- text for the same message id. §1 makes messages immutable after import, so a changed body

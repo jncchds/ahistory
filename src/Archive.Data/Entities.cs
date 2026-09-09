@@ -80,6 +80,10 @@ public sealed class Media
     public string Hash { get; set; } = string.Empty;
     public long ByteSize { get; set; }
     public string? Mime { get; set; }
+
+    /// <summary>Including the leading dot, e.g. ".ogg". Part of the on-disk filename.</summary>
+    public string? Extension { get; set; }
+
     public string MediaKind { get; set; } = string.Empty;
     public long? Width { get; set; }
     public long? Height { get; set; }
@@ -123,6 +127,17 @@ public sealed class Message
     public string? RawJson { get; set; }
     public string FirstImportId { get; set; } = string.Empty;
     public string ImporterVersion { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Which imports a message was seen in — the source of the UI's "show only these imports" filter.
+/// </summary>
+public sealed class MessageImport
+{
+    public long MessageId { get; set; }
+    public string ImportId { get; set; } = string.Empty;
+    public bool IsFirst { get; set; }
+    public string SeenUtc { get; set; } = string.Empty;
 }
 
 public sealed class MessageRevision

@@ -130,3 +130,37 @@ the decision to regenerate visibly (an entry marked as revised, with a diff), th
 the fact-set version that produced it.
 
 **Status:** design only — no implementation before the knowledge-base phase.
+
+---
+
+## D10 — `media.extension`
+
+The spec's `Media` table records mime, dimensions and duration but not the file extension.
+V1 opens audio and video in the OS default handler (D7), and every desktop platform selects that
+handler by extension — an extensionless file simply fails to open. The extension is therefore
+part of the stored file's identity, not cosmetic, and the content-addressed path is
+`media/ab/cd/<hash><ext>`.
+
+---
+
+## D11 — `message_import`: every import a message appeared in
+
+**Spec has:** one import reference per message. **We add:** a link table recording every import
+a message was seen in.
+
+`message.first_import_id` is provenance — where the row came from — and never changes. That is a
+different question from "which exports contain this message", which is what the UI needs in
+order to filter the archive by source. The two diverge as soon as exports overlap, and
+overlapping exports are the normal case: a fresh export of a chat you already imported contains
+almost entirely messages you already have.
+
+Two things this buys beyond the filter:
+
+- **"What did this import actually add?"** is one indexed read, via the denormalized `is_first`
+  flag, rather than a comparison against the whole archive.
+- **An import becomes reversible.** The messages belonging only to import X are those with no
+  other row in `message_import`, so an unwanted or mis-parsed import can be withdrawn without
+  disturbing the rest of the archive.
+
+The alternative — inferring the set from `first_import_id` alone — cannot answer either question,
+because a message that arrived in three exports is recorded as belonging to one.
