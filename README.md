@@ -76,7 +76,7 @@ the media files are referenced by relative path.
 Requires the .NET 10 SDK.
 
 ```bash
-git clone https://github.com/<owner>/ahistory.git
+git clone https://github.com/jncchds/ahistory.git
 cd ahistory
 dotnet build Ahistory.slnx
 dotnet test Ahistory.slnx
