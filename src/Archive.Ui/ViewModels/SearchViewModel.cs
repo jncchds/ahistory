@@ -17,6 +17,8 @@ public sealed partial class SearchViewModel(
 
     public override string Title => "Search";
 
+    public override string Glyph => "⌕";
+
     public ObservableCollection<SearchHit> Results { get; } = [];
 
     public ObservableCollection<PersonFilterOption> People { get; } = [];

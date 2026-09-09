@@ -32,13 +32,26 @@ public sealed partial class PersonViewModel(
 
     public override string Title => "Conversations";
 
+    public override string Glyph => "☰";
+
     public ObservableCollection<PersonRow> People { get; } = [];
 
-    /// <summary>Newest first, so older pages append at the end.</summary>
+    /// <summary>
+    /// Oldest first, so the conversation reads downward the way a chat does.
+    /// </summary>
+    /// <remarks>
+    /// Pages are fetched newest-first, because that is what keyset paging from the present
+    /// backwards gives you, and then inserted at the front. Reading order and fetch order are
+    /// opposite on purpose: fetching newest-first is what makes opening a ten-year conversation
+    /// instant, and reading oldest-first is what makes it a conversation rather than a log.
+    /// </remarks>
     public ObservableCollection<ConversationItem> Items { get; } = [];
 
     [ObservableProperty]
     private PersonRow? _selectedPerson;
+
+    [ObservableProperty]
+    private string? _personFilter;
 
     [ObservableProperty]
     private bool _hasMore;
@@ -52,7 +65,8 @@ public sealed partial class PersonViewModel(
     {
         await RunAsync(async () =>
         {
-            var people = await Task.Run(() => queries.People()).ConfigureAwait(true);
+            var filter = PersonFilter;
+            var people = await Task.Run(() => queries.People(filter)).ConfigureAwait(true);
             var previous = SelectedPerson?.Id;
 
             People.Clear();
@@ -72,6 +86,8 @@ public sealed partial class PersonViewModel(
     }
 
     partial void OnSelectedPersonChanged(PersonRow? value) => _pendingLoad = LoadFirstPageAsync();
+
+    partial void OnPersonFilterChanged(string? value) => _ = RefreshAsync();
 
     private Task LoadFirstPageAsync() => RunAsync(async () =>
     {
@@ -104,22 +120,34 @@ public sealed partial class PersonViewModel(
         var page = await Task.Run(() => conversation.Page(person.Id, PageSize, unix, id))
             .ConfigureAwait(true);
 
+        // The page arrives newest-first; the view reads oldest-first. Building the page in reverse
+        // and inserting it at the front puts it above what is already there, which is where an
+        // older page belongs.
+        var prepared = new List<ConversationItem>(page.Messages.Count * 2);
+
         foreach (var message in page.Messages)
         {
-            // The stream runs newest to oldest, so the gap is measured against the message
-            // above — the one sent later.
-            if (_oldestLoadedUnix is { } previous)
+            // Measured against the message that comes after it in time — which, walking a
+            // newest-first page, is the one already handled.
+            if (_oldestLoadedUnix is { } later)
             {
-                var gap = TimeSpan.FromSeconds(previous - message.SentAtUnix);
+                var gap = TimeSpan.FromSeconds(later - message.SentAtUnix);
 
                 if (gap >= SilenceThreshold)
                 {
-                    Items.Add(new SilenceItem(gap));
+                    prepared.Add(new SilenceItem(gap));
                 }
             }
 
-            Items.Add(new MessageItem(message, LoadContextAsync));
+            prepared.Add(new MessageItem(message, LoadContextAsync));
             _oldestLoadedUnix = message.SentAtUnix;
+        }
+
+        prepared.Reverse();
+
+        for (var i = 0; i < prepared.Count; i++)
+        {
+            Items.Insert(i, prepared[i]);
         }
 
         _beforeUnix = page.NextBeforeUnix;

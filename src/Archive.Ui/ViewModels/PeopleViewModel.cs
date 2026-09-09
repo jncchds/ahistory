@@ -20,6 +20,8 @@ public sealed partial class PeopleViewModel(
 {
     public override string Title => "People";
 
+    public override string Glyph => "☺";
+
     public ObservableCollection<PersonRow> People { get; } = [];
 
     public ObservableCollection<IdentityRow> Identities { get; } = [];

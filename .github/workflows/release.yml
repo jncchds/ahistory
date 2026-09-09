@@ -2,11 +2,14 @@ name: Release
 
 # Building a release/x.y.z branch produces standalone builds for every platform.
 #
-# A note on the trigger. A branch keeps moving, so "what shipped as 0.1.0" is only ever the branch
-# as it was at some moment; a tag is immutable and answers that permanently. This workflow
-# therefore builds a *draft* release from the branch, and the draft is published — which creates
-# the tag — when the branch is actually ready. The artifacts are attached either way, so a
-# release branch is buildable and testable long before it is declared final.
+# Pushing release/0.1.0 tests on all three platforms, packages every RID, and publishes a
+# GitHub release tagged v0.1.0 with the builds attached.
+#
+# Release branches only. Nothing here runs on main — main is for CI.
+#
+# Note that the tag is created from the branch as it stands at that moment, so pushing again to a
+# release branch will try to release the same version twice. Bump the version, or delete the tag
+# and release first.
 on:
   push:
     branches: ['release/**']
@@ -22,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.derive.outputs.version }}
+      prerelease: ${{ steps.derive.outputs.prerelease }}
 
     steps:
       - name: Derive the version
@@ -42,6 +46,14 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # A version with a suffix — 0.2.0-beta.1 — is published as a pre-release.
+          if echo "$VERSION" | grep -q -- "-"; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
           echo "Building $VERSION"
 
   test:
@@ -134,8 +146,8 @@ jobs:
           path: ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.*
           if-no-files-found: error
 
-  draft:
-    name: draft release
+  release:
+    name: release
     needs: [version, package]
     runs-on: ubuntu-latest
     permissions:
@@ -147,14 +159,15 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Draft the release
+      - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: ahistory ${{ needs.version.outputs.version }}
-          # A draft, not a release: publishing it is what creates the tag, and that should be a
-          # deliberate act rather than a side effect of pushing to a branch.
-          draft: true
+          # A real release, tagged from the release branch.
+          draft: false
+          # A version with a suffix — 0.2.0-beta.1 — is marked as a pre-release automatically.
+          prerelease: ${{ needs.version.outputs.prerelease }}
           files: artifacts/*
           body: |
             Standalone builds of ahistory ${{ needs.version.outputs.version }}. No .NET

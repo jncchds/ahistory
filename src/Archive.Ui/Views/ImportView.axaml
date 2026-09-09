@@ -4,6 +4,10 @@
              x:Class="Archive.Ui.Views.ImportView"
              x:DataType="vm:ImportViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
+  </UserControl.Styles>
+
   <ScrollViewer>
     <StackPanel Spacing="16">
 

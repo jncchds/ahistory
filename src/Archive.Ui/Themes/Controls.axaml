@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:Archive.Ui.Controls">
+
+  <ControlTheme x:Key="{x:Type controls:Avatar}" TargetType="controls:Avatar">
+    <Setter Property="Width" Value="46" />
+    <Setter Property="Height" Value="46" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Grid>
+          <Ellipse Fill="{TemplateBinding CircleBrush}" />
+          <TextBlock Text="{TemplateBinding Initials}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     FontSize="15" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextBrush}" />
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+</ResourceDictionary>

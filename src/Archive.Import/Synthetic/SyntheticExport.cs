@@ -203,9 +203,13 @@ public static class SyntheticExport
                 cursor = cursor.AddSeconds(random.Next(0, 2) == 0 ? 0 : random.Next(5, 400));
 
                 var fromOwner = random.Next(2) == 0;
-                var sender = fromOwner ? OwnerId : PickSender(random, contacts, contact, isGroup);
+                var speaker = fromOwner ? null : PickSender(random, contacts, contact, isGroup);
 
-                WriteMessage(writer, random, id++, cursor, sender, isGroup, stickerPath);
+                WriteMessage(
+                    writer, random, id++, cursor,
+                    speaker?.Id ?? OwnerId,
+                    speaker?.Name ?? "Owner Synthetic",
+                    isGroup, stickerPath);
                 written++;
             }
 
@@ -223,8 +227,9 @@ public static class SyntheticExport
         return written;
     }
 
-    private static long PickSender(Random random, List<Contact> contacts, Contact primary, bool isGroup) =>
-        isGroup ? contacts[random.Next(contacts.Count)].Id : primary.Id;
+    /// <summary>In a group anyone might speak; in a direct chat it is always the same person.</summary>
+    private static Contact PickSender(Random random, List<Contact> contacts, Contact primary, bool isGroup) =>
+        isGroup ? contacts[random.Next(contacts.Count)] : primary;
 
     private static void WriteMessage(
         Utf8JsonWriter writer,
@@ -232,6 +237,7 @@ public static class SyntheticExport
         int id,
         DateTimeOffset at,
         long senderId,
+        string senderName,
         bool isGroup,
         string stickerPath)
     {
@@ -245,7 +251,7 @@ public static class SyntheticExport
             writer.WriteString("type", "service");
             writer.WriteString("date", at.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
             writer.WriteString("date_unixtime", at.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
-            writer.WriteString("actor", "Someone");
+            writer.WriteString("actor", senderName);
             writer.WriteString("actor_id", "user" + senderId.ToString(CultureInfo.InvariantCulture));
             writer.WriteString("action", isGroup ? "invite_members" : "phone_call");
             writer.WriteString("text", string.Empty);
@@ -258,7 +264,7 @@ public static class SyntheticExport
         writer.WriteString("type", "message");
         writer.WriteString("date", at.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
         writer.WriteString("date_unixtime", at.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
-        writer.WriteString("from", "Someone");
+        writer.WriteString("from", senderName);
         writer.WriteString("from_id", "user" + senderId.ToString(CultureInfo.InvariantCulture));
 
         if (id > 1 && random.Next(100) < 20)

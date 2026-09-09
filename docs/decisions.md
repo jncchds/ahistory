@@ -451,3 +451,36 @@ What works is capping it. `Count` stops at 1,000 and reports whether it was cut 
 says "1,000+ matches" rather than paying a second full pass for a number nobody reads precisely.
 Below the cap the count is exact and the page says so. **233 ms to 136 ms**, and what remains is
 the search itself — bm25 across every match plus snippets for the ones shown — which is inherent.
+
+---
+
+## D19 — Telegram's layout, deliberately not Telegram's colours
+
+The window follows Telegram Desktop: a narrow icon rail, a list of people, and the conversation
+as bubbles. That is the shape people already read messages in, and inventing a different one
+would cost familiarity to buy nothing.
+
+The palette does not follow it. Telegram is cool blue-grey; this is warm — dark paper rather than
+dark glass, amber where Telegram is blue. The app is an archive of things that already happened,
+not a live chat, and it should not be mistaken for one at a glance.
+
+Details that carry more than they look like they should:
+
+- **The bubble's corner nearest its speaker is flattened.** That single detail is what makes a
+  stack of rectangles read as speech, and what lets you see who said what without reading a name.
+- **Avatar colour is derived from the name, not assigned.** The same person is the same colour
+  every launch, which is what makes a list scannable without reading it. `string.GetHashCode` is
+  randomized per process and would have given someone a new colour every time the app opened, so
+  the hash is a plain character sum — a poor hash and exactly the right one.
+- **Bubbles are labelled with the room, not the speaker.** In a view of one person every incoming
+  message is from that same person, so their name on every bubble is a column of the same word.
+  Which group it came from is the part that varies (§4).
+- **Fetch order and reading order are opposite.** Pages come newest-first, because that is what
+  keyset paging backwards from the present gives and what makes opening a ten-year conversation
+  instant; they are inserted at the front so the conversation reads downward like a conversation
+  rather than upward like a log.
+
+The screenshots that verified this were rendered headlessly through Avalonia's Skia backend,
+which is also how the layout bugs were found — the first render showed every contact named
+"Someone", which was a defect in the synthetic generator rather than the UI: it wrote a literal
+name on every message while varying only the id.

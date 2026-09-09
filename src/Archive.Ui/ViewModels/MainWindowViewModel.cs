@@ -40,6 +40,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string SavePath => _options.DatabasePath;
 
+    /// <summary>Just the file name: the rail is 78 pixels wide and a full path is unreadable there.</summary>
+    public string SaveName => Path.GetFileNameWithoutExtension(_options.DatabasePath);
+
     [ObservableProperty]
     private ViewModelBase _currentPage;
 

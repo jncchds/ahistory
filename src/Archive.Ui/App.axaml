@@ -3,7 +3,16 @@
              xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
              xmlns:views="clr-namespace:Archive.Ui.Views"
              x:Class="Archive.Ui.App"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Archive.Ui/Themes/Palette.axaml" />
+        <ResourceInclude Source="avares://Archive.Ui/Themes/Controls.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
 
   <Application.DataTemplates>
     <!--
@@ -21,25 +30,121 @@
   <Application.Styles>
     <FluentTheme />
 
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{DynamicResource ConversationBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.heading">
-      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontSize" Value="19" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
     <Style Selector="TextBlock.subtle">
-      <Setter Property="Opacity" Value="0.6" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.faint">
+      <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+      <Setter Property="FontSize" Value="11" />
     </Style>
 
     <!-- §4: a group line is context borrowed from elsewhere, so it reads a shade quieter than
          something said directly to you. -->
     <Style Selector="TextBlock.fromGroup">
-      <Setter Property="Opacity" Value="0.72" />
+      <Setter Property="Opacity" Value="0.78" />
     </Style>
 
     <Style Selector="TextBlock.stat">
       <Setter Property="FontSize" Value="26" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!--
+      Message bubbles. The corner nearest the speaker is flattened — the detail that makes a
+      stack of rectangles read as speech, and what lets you see who said what without reading a
+      name.
+    -->
+    <Style Selector="Border.bubble">
+      <Setter Property="Background" Value="{DynamicResource BubbleIncomingBrush}" />
+      <Setter Property="CornerRadius" Value="12,12,12,4" />
+    </Style>
+
+    <Style Selector="Border.bubble.outgoing">
+      <Setter Property="Background" Value="{DynamicResource BubbleOutgoingBrush}" />
+      <Setter Property="CornerRadius" Value="12,12,4,12" />
+    </Style>
+
+    <!-- Conversation and people lists: flat rows, accent selection, no Fluent chrome. -->
+    <Style Selector="ListBox.rows">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style Selector="ListBox.rows ListBoxItem">
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="Margin" Value="4,1" />
+    </Style>
+
+    <Style Selector="ListBox.rows ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <Style Selector="ListBox.rows ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ElevatedBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <!-- The icon rail down the left, as Telegram has for folders. -->
+    <Style Selector="ListBox.rail">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style Selector="ListBox.rail ListBoxItem">
+      <Setter Property="Padding" Value="0,9" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
+    <Style Selector="ListBox.rail ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource ElevatedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Padding" Value="12,7" />
+    </Style>
+
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource ElevatedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+
+    <Style Selector="Button.accent">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+    </Style>
+
+    <Style Selector="Button:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+    </Style>
+
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="{DynamicResource ElevatedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
     </Style>
   </Application.Styles>
 

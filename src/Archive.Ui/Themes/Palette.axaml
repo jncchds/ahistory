@@ -1,0 +1,62 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    The layout follows Telegram Desktop, because it is the shape people already read messages in:
+    a narrow icon rail, a list of conversations, and the conversation itself as bubbles.
+
+    The colours deliberately do not. Telegram's palette is cool blue-grey; this is warm — dark
+    paper rather than dark glass — because the app is an archive of things that already happened,
+    not a live chat, and it should not be mistaken for one at a glance.
+  -->
+
+  <!-- Surfaces, darkest to lightest. -->
+  <Color x:Key="RailColor">#16110C</Color>
+  <Color x:Key="ListColor">#1E1813</Color>
+  <Color x:Key="ConversationColor">#191410</Color>
+  <Color x:Key="ElevatedColor">#2A221B</Color>
+
+  <!-- Bubbles. Incoming reads as neutral paper; outgoing carries the accent. -->
+  <Color x:Key="BubbleIncomingColor">#2B231C</Color>
+  <Color x:Key="BubbleOutgoingColor">#4A3418</Color>
+
+  <!-- Amber, the way old paper and lamplight go. -->
+  <Color x:Key="AccentColor">#D9A05B</Color>
+  <Color x:Key="AccentMutedColor">#8A6534</Color>
+
+  <Color x:Key="TextColor">#EDE4D8</Color>
+  <Color x:Key="TextMutedColor">#A2917E</Color>
+  <Color x:Key="TextFaintColor">#6E6153</Color>
+  <Color x:Key="DividerColor">#2E2620</Color>
+  <Color x:Key="WarningColor">#D98E4B</Color>
+  <Color x:Key="DangerColor">#C8624B</Color>
+
+  <SolidColorBrush x:Key="RailBrush" Color="{StaticResource RailColor}" />
+  <SolidColorBrush x:Key="ListBrush" Color="{StaticResource ListColor}" />
+  <SolidColorBrush x:Key="ConversationBrush" Color="{StaticResource ConversationColor}" />
+  <SolidColorBrush x:Key="ElevatedBrush" Color="{StaticResource ElevatedColor}" />
+  <SolidColorBrush x:Key="BubbleIncomingBrush" Color="{StaticResource BubbleIncomingColor}" />
+  <SolidColorBrush x:Key="BubbleOutgoingBrush" Color="{StaticResource BubbleOutgoingColor}" />
+  <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+  <SolidColorBrush x:Key="AccentMutedBrush" Color="{StaticResource AccentMutedColor}" />
+  <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+  <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+  <SolidColorBrush x:Key="TextFaintBrush" Color="{StaticResource TextFaintColor}" />
+  <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource DividerColor}" />
+  <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+  <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+
+  <!--
+    Avatar colours, assigned by hashing a name. Telegram does the same thing, and it matters more
+    than it looks: it is what makes a conversation list scannable without reading any of it.
+    Muted enough to sit under the text rather than compete with it.
+  -->
+  <SolidColorBrush x:Key="Avatar0" Color="#8C5A3C" />
+  <SolidColorBrush x:Key="Avatar1" Color="#6B7A4C" />
+  <SolidColorBrush x:Key="Avatar2" Color="#4E6B70" />
+  <SolidColorBrush x:Key="Avatar3" Color="#7A5568" />
+  <SolidColorBrush x:Key="Avatar4" Color="#8A7038" />
+  <SolidColorBrush x:Key="Avatar5" Color="#55684F" />
+  <SolidColorBrush x:Key="Avatar6" Color="#7B5F45" />
+
+</ResourceDictionary>

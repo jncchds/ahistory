@@ -69,8 +69,37 @@ public sealed class PersonViewModelTests
 
         var texts = MessagesOf(page).Select(m => m.Row.Plaintext).ToArray();
 
-        // Their group line is included; mine is not — this is their conversation.
-        Assert.Equal(["in the group", "in the dm"], texts);
+        // Their group line is included; mine is not — this is their conversation. Oldest first,
+        // the way a conversation reads.
+        Assert.Equal(["in the dm", "in the group"], texts);
+    }
+
+    /// <summary>
+    /// Pages are fetched newest-first, because that is what makes opening a ten-year conversation
+    /// instant. They are read oldest-first, because that is what makes it a conversation rather
+    /// than a log. Loading older pages must not disturb that.
+    /// </summary>
+    [Fact]
+    public async Task The_conversation_reads_oldest_first_however_many_pages_are_loaded()
+    {
+        var messages = Enumerable.Range(1, 250)
+            .Select(i => Message(i, 1_000_000 + i, "user5001", $"message {i}"))
+            .ToArray();
+
+        var (save, page) = await Loaded(Export(DirectThread(messages)));
+        using var _ = save;
+
+        while (page.HasMore)
+        {
+            await page.LoadMoreCommand.ExecuteAsync(null);
+        }
+
+        var times = MessagesOf(page).Select(m => m.Row.SentAtUnix).ToArray();
+
+        Assert.Equal(250, times.Length);
+        Assert.Equal(times.OrderBy(t => t), times);
+        Assert.Equal("message 1", MessagesOf(page).First().Row.Plaintext);
+        Assert.Equal("message 250", MessagesOf(page).Last().Row.Plaintext);
     }
 
     /// <summary>§4: a group line is marked, and carries the room it was said in.</summary>

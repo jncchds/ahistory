@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Archive.Data;
+using Avalonia.Layout;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -52,6 +53,39 @@ public sealed partial class MessageItem(PersonMessageRow row, Func<long, Task<IR
     /// Group lines can be expanded; direct messages have nothing to expand into.
     /// </summary>
     public bool CanExpand => Row.IsFromGroup;
+
+    /// <summary>Yours on the right, theirs on the left.</summary>
+    public HorizontalAlignment Alignment =>
+        Row.FromOwner ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+
+    /// <summary>
+    /// True for your own messages.
+    /// </summary>
+    /// <remarks>
+    /// A flag rather than a brush: colour and corner radius are decided by a style, so the view
+    /// model never has to look a resource up and the palette can change without touching it.
+    /// </remarks>
+    public bool IsOutgoing => Row.FromOwner;
+
+    /// <summary>
+    /// Whether to label the bubble at all.
+    /// </summary>
+    /// <remarks>
+    /// Only group lines get a label, and it names the room rather than the speaker. In a view of
+    /// one person, every incoming message is from that same person — their name on every bubble
+    /// is a column of the same word. Where it came from is the part that varies (§4).
+    /// </remarks>
+    public bool ShowsSender => Row.IsFromGroup;
+
+    /// <summary>
+    /// A readable time, not the stored ISO string.
+    /// </summary>
+    /// <remarks>
+    /// Dated as well as timed, because this is an archive: in a live chat "9:48" means today, and
+    /// here it could mean any day in ten years.
+    /// </remarks>
+    public string Timestamp =>
+        DateTimeOffset.FromUnixTimeSeconds(Row.SentAtUnix).LocalDateTime.ToString("d MMM yyyy, HH:mm");
 
     [ObservableProperty]
     private bool _isExpanded;

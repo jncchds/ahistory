@@ -16,8 +16,17 @@ public abstract partial class ViewModelBase(ILogger? logger = null) : Observable
     /// </remarks>
     protected ILogger Log { get; } = logger ?? NullLogger.Instance;
 
-    /// <summary>What the navigation sidebar calls this page.</summary>
+    /// <summary>What the navigation rail calls this page.</summary>
     public abstract string Title { get; }
+
+    /// <summary>
+    /// The rail icon.
+    /// </summary>
+    /// <remarks>
+    /// A character, not an image: it needs no asset pipeline, no licence, and no separate file
+    /// per DPI, and every platform this app targets ships a font that draws it.
+    /// </remarks>
+    public abstract string Glyph { get; }
 
     [ObservableProperty]
     private bool _isBusy;

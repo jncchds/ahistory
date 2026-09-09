@@ -17,6 +17,8 @@ public sealed partial class ImportViewModel(
 {
     public override string Title => "Import";
 
+    public override string Glyph => "⇩";
+
     /// <summary>Raised after a successful import so the other pages reload.</summary>
     public event Func<Task>? Imported;
 

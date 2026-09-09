@@ -6,7 +6,7 @@ name: CI
 # Windows-only run cannot exercise.
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:

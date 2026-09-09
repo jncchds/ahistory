@@ -22,6 +22,8 @@ public sealed partial class ThreadsViewModel(ArchiveQueries queries, ILogger<Thr
 
     public override string Title => "Threads";
 
+    public override string Glyph => "❐";
+
     public ObservableCollection<ThreadRow> Threads { get; } = [];
 
     public ObservableCollection<MessageRow> Messages { get; } = [];
