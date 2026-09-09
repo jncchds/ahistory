@@ -1,0 +1,8 @@
+# The .editorconfig says LF. Keep git from undoing that on Windows checkouts,
+# so a file written here is byte-identical to one written on Linux or macOS.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.db binary
