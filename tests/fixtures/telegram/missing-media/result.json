@@ -1,0 +1,36 @@
+{
+  "name": "Sam Ruiz",
+  "type": "personal_chat",
+  "id": 100,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2021-06-01T09:00:00",
+      "date_unixtime": "1622538000",
+      "from": "Sam Ruiz",
+      "from_id": "user5001",
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 1280,
+      "height": 960,
+      "text": "the view from the flat",
+      "text_entities": [
+        { "type": "plain", "text": "the view from the flat" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2021-06-01T09:01:00",
+      "date_unixtime": "1622538060",
+      "from": "Sam Ruiz",
+      "from_id": "user5001",
+      "file": "(File not included. Change data exporting settings to download.)",
+      "media_type": "voice_message",
+      "mime_type": "audio/ogg",
+      "duration_seconds": 12,
+      "text": "",
+      "text_entities": []
+    }
+  ]
+}

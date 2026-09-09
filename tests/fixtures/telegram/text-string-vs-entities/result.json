@@ -1,0 +1,29 @@
+{
+  "name": "Sam Ruiz", "type": "personal_chat", "id": 100,
+  "messages": [
+    {
+      "id": 1, "type": "message", "date": "2019-04-02T18:12:03", "date_unixtime": "1554221523",
+      "from": "Sam", "from_id": "user5001",
+      "text": "WRONG - this field must never be read",
+      "text_entities": [
+        { "type": "plain", "text": "see " },
+        { "type": "link", "text": "https://example.org" },
+        { "type": "plain", "text": " for the map" }
+      ]
+    },
+    {
+      "id": 2, "type": "message", "date": "2019-04-02T18:13:00", "date_unixtime": "1554221580",
+      "from": "Sam", "from_id": "user5001",
+      "text": [
+        "mixed ",
+        { "type": "bold", "text": "array" },
+        " form"
+      ],
+      "text_entities": [
+        { "type": "plain", "text": "mixed " },
+        { "type": "bold", "text": "array" },
+        { "type": "plain", "text": " form" }
+      ]
+    }
+  ]
+}

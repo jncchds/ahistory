@@ -1,0 +1,70 @@
+{
+  "name": "Sam Ruiz",
+  "type": "personal_chat",
+  "id": 100,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2020-01-05T10:00:00",
+      "date_unixtime": "1578218400",
+      "from": "Sam Ruiz",
+      "from_id": "user5001",
+      "forwarded_from": "Alex",
+      "text": "look at this",
+      "text_entities": [
+        { "type": "plain", "text": "look at this" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2020-01-05T10:00:30",
+      "date_unixtime": "1578218430",
+      "from": "Sam Ruiz",
+      "from_id": "user5001",
+      "file": "stickers/sticker.webp",
+      "media_type": "sticker",
+      "sticker_emoji": "🐢",
+      "mime_type": "image/webp",
+      "width": 512,
+      "height": 512,
+      "text": "",
+      "text_entities": []
+    },
+    {
+      "id": 3,
+      "type": "message",
+      "date": "2020-01-05T10:01:00",
+      "date_unixtime": "1578218460",
+      "from": "Kirill",
+      "from_id": "user777001",
+      "file": "stickers/sticker.webp",
+      "media_type": "sticker",
+      "sticker_emoji": "🐢",
+      "mime_type": "image/webp",
+      "width": 512,
+      "height": 512,
+      "text": "",
+      "text_entities": []
+    },
+    {
+      "id": 4,
+      "type": "message",
+      "date": "2020-01-05T10:02:00",
+      "date_unixtime": "1578218520",
+      "from": "Sam Ruiz",
+      "from_id": "user5001",
+      "via_bot": "@gif",
+      "file": "video_files/clip.mp4",
+      "thumbnail": "video_files/clip_thumb.jpg",
+      "media_type": "animation",
+      "mime_type": "video/mp4",
+      "duration_seconds": 4,
+      "width": 320,
+      "height": 240,
+      "text": "",
+      "text_entities": []
+    }
+  ]
+}

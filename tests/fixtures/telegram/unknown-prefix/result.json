@@ -1,0 +1,8 @@
+{
+  "name": "Future", "type": "private_group", "id": 500,
+  "messages": [
+    { "id": 1, "type": "message", "date_unixtime": "1554221523", "from": "Someone", "from_id": "spaceship42",
+      "text": "from a participant kind that does not exist yet",
+      "text_entities": [ { "type": "plain", "text": "from a participant kind that does not exist yet" } ] }
+  ]
+}

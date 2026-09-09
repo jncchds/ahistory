@@ -1,0 +1,8 @@
+{
+  "name": "Old group", "type": "private_group", "id": 600,
+  "messages": [
+    { "id": 1, "type": "message", "date_unixtime": "1479676980", "from": "Deleted Account",
+      "text": "no id on this one",
+      "text_entities": [ { "type": "plain", "text": "no id on this one" } ] }
+  ]
+}

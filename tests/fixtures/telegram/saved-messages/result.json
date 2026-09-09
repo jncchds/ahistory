@@ -1,0 +1,8 @@
+{
+  "name": "Kirill", "type": "saved_messages", "id": 777001,
+  "messages": [
+    { "id": 1, "type": "message", "date_unixtime": "1554221523", "from": "Kirill", "from_id": "user777001",
+      "text": "flat viewing thursday 18:00",
+      "text_entities": [ { "type": "plain", "text": "flat viewing thursday 18:00" } ] }
+  ]
+}
