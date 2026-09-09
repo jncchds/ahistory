@@ -119,6 +119,7 @@ later as a broken window.
 - **[message-archive-design.md](message-archive-design.md)** — the authoritative design spec.
 - **[docs/decisions.md](docs/decisions.md)** — every departure from that spec, with reasoning.
 - **[AGENTS.md](AGENTS.md)** — principles and conventions for anyone (or anything) writing code here.
+- **[docs/v1-plan.md](docs/v1-plan.md)** — the V1 implementation plan as originally approved, kept as a historical record.
 
 ## Privacy
 
