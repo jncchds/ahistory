@@ -30,7 +30,7 @@ conversation view, keyword search.
 |---|---|---|
 | M0 | Skeleton — solution, build settings, project graph | ✅ |
 | M1 | Storage — pragmas, migration runner, schema, EF mapping | ✅ |
-| M2 | Content-addressed media store | ⬜ |
+| M2 | Content-addressed media store | ✅ |
 | M3 | Telegram importer, proven idempotent | ⬜ |
 | M4 | Desktop shell, import UI, identity merging | ⬜ |
 | M5 | The continuous per-person conversation | ⬜ |
