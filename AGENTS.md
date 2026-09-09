@@ -129,6 +129,11 @@ fakes as nested classes. Method names are snake_case sentences
 use a real SQLite **file** in a temp directory, never `:memory:`, because WAL, foreign keys and
 cascade behaviour differ.
 
+UI tests live in `Archive.Ui.Tests`. Most are plain view-model tests with no window at all; the
+few that need a real Application use `Headless.RunAsync`, which drives Avalonia's headless
+session directly rather than pulling in the xUnit v3 adapter (decisions.md D14). Use its async
+overload when the body awaits a view model — blocking the headless UI thread deadlocks.
+
 ---
 
 ## After a change

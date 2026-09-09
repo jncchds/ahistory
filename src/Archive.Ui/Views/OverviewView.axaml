@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             x:Class="Archive.Ui.Views.OverviewView"
+             x:DataType="vm:OverviewViewModel">
+
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Overview" />
+
+    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap"
+               Margin="0,0,0,12"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+    <!-- An empty archive is a normal first state, not an error. -->
+    <StackPanel DockPanel.Dock="Top" IsVisible="{Binding IsEmpty}" Spacing="8">
+      <TextBlock Text="This archive is empty." FontSize="15" />
+      <TextBlock Classes="subtle" TextWrapping="Wrap"
+                 Text="Open Import and choose a Telegram export folder — the one containing result.json." />
+    </StackPanel>
+
+    <StackPanel IsVisible="{Binding !IsEmpty}" Spacing="20">
+
+      <WrapPanel>
+        <StackPanel Width="170">
+          <TextBlock Classes="stat" Text="{Binding Summary.Messages, StringFormat='{}{0:N0}'}" />
+          <TextBlock Classes="subtle" Text="messages" />
+        </StackPanel>
+        <StackPanel Width="170">
+          <TextBlock Classes="stat" Text="{Binding Summary.People, StringFormat='{}{0:N0}'}" />
+          <TextBlock Classes="subtle" Text="people" />
+        </StackPanel>
+        <StackPanel Width="170">
+          <TextBlock Classes="stat" Text="{Binding Summary.Threads, StringFormat='{}{0:N0}'}" />
+          <TextBlock Classes="subtle" Text="conversations" />
+        </StackPanel>
+        <StackPanel Width="170">
+          <TextBlock Classes="stat" Text="{Binding Summary.MediaFiles, StringFormat='{}{0:N0}'}" />
+          <TextBlock Classes="subtle" Text="media files" />
+        </StackPanel>
+      </WrapPanel>
+
+      <StackPanel Spacing="4">
+        <TextBlock Text="{Binding Summary.OwnerName, StringFormat='Owner: {0}'}" />
+        <TextBlock Classes="subtle"
+                   Text="{Binding Summary.Identities, StringFormat='{}{0:N0} platform accounts'}" />
+        <TextBlock Classes="subtle"
+                   Text="{Binding Summary.SyntheticIdentities, StringFormat='{}{0:N0} of them identified by name only'}" />
+        <TextBlock Classes="subtle"
+                   Text="{Binding Summary.Sources, StringFormat='{}{0:N0} import source(s)'}" />
+        <TextBlock Classes="subtle" Margin="0,8,0,0"
+                   Text="{Binding Summary.LastImportUtc, StringFormat='Last import: {0}'}" />
+      </StackPanel>
+
+    </StackPanel>
+  </DockPanel>
+
+</UserControl>

@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+        x:Class="Archive.Ui.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="ahistory"
+        Width="1100" Height="740"
+        MinWidth="720" MinHeight="480">
+
+  <Grid ColumnDefinitions="200,*">
+
+    <!-- Navigation. Pages are view models; the sidebar just selects one. -->
+    <Border Grid.Column="0" Background="{DynamicResource SystemControlBackgroundListLowBrush}">
+      <DockPanel Margin="0,12">
+        <TextBlock DockPanel.Dock="Top" Text="ahistory" FontSize="16" FontWeight="SemiBold"
+                   Margin="16,0,16,4" />
+        <TextBlock DockPanel.Dock="Top" Classes="subtle" FontSize="11" TextWrapping="Wrap"
+                   Margin="16,0,16,16" Text="{Binding SavePath}" />
+
+        <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding CurrentPage}"
+                 Background="Transparent" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:ViewModelBase">
+              <TextBlock Text="{Binding Title}" Margin="4,6" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <ContentControl Grid.Column="1" Content="{Binding CurrentPage}" Margin="24" />
+
+  </Grid>
+
+</Window>

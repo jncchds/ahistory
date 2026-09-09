@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:data="clr-namespace:Archive.Data;assembly=Archive.Data"
+             x:Class="Archive.Ui.Views.PeopleView"
+             x:DataType="vm:PeopleViewModel">
+
+  <DockPanel>
+
+    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="People" />
+
+    <TextBlock DockPanel.Dock="Top" Classes="subtle" TextWrapping="Wrap" Margin="0,0,0,12"
+               Text="A person is a human; an account is one profile on one platform. Attributing an account to a different person never rewrites a message, so any merge here can be undone." />
+
+    <!-- The owner-merge confirmation. §1: getting this wrong poisons the knowledge base. -->
+    <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="12" CornerRadius="4"
+            Background="#33C1442E" BorderBrush="#C1442E" BorderThickness="1"
+            IsVisible="{Binding PendingOwnerMerge, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <StackPanel Spacing="10">
+        <TextBlock TextWrapping="Wrap" Text="{Binding PendingOwnerMerge}" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="Yes, this account is me" Command="{Binding ConfirmOwnerMergeCommand}" />
+          <Button Content="Cancel" Command="{Binding CancelOwnerMergeCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+      <Button Content="Attribute account to person" Command="{Binding MergeCommand}" />
+      <Button Content="Detach account" Command="{Binding UnmergeCommand}" />
+      <CheckBox Content="Only accounts identified by name" IsChecked="{Binding ShowOnlyUncertain}"
+                VerticalAlignment="Center" Margin="12,0,0,0" />
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,16,2*">
+
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Text="People" FontWeight="SemiBold" Margin="0,0,0,6" />
+        <ListBox ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="data:PersonRow">
+              <StackPanel Margin="0,4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding DisplayName}" />
+                  <Border Background="#33808080" CornerRadius="3" Padding="4,0"
+                          IsVisible="{Binding IsOwner}">
+                    <TextBlock Text="you" FontSize="10" VerticalAlignment="Center" />
+                  </Border>
+                </StackPanel>
+                <TextBlock Classes="subtle" FontSize="11"
+                           Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <DockPanel Grid.Column="2">
+        <TextBlock DockPanel.Dock="Top" Text="Platform accounts" FontWeight="SemiBold" Margin="0,0,0,6" />
+        <ListBox ItemsSource="{Binding Identities}" SelectedItem="{Binding SelectedIdentity}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="data:IdentityRow">
+              <StackPanel Margin="0,4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding DisplayName}" />
+                  <!-- No platform id: matched on name alone, so it is a guess (§2). -->
+                  <Border Background="#33B8860B" CornerRadius="3" Padding="4,0"
+                          IsVisible="{Binding IsSynthetic}">
+                    <TextBlock Text="name only" FontSize="10" VerticalAlignment="Center" />
+                  </Border>
+                </StackPanel>
+                <TextBlock Classes="subtle" FontSize="11"
+                           Text="{Binding PersonName, StringFormat='attributed to {0}'}" />
+                <TextBlock Classes="subtle" FontSize="11"
+                           Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+    </Grid>
+
+  </DockPanel>
+
+</UserControl>

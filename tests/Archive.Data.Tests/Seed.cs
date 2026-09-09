@@ -32,6 +32,26 @@ internal static class Seed
         VALUES ('{IdentityId}', 'telegram', '5', 'Sam', '{ImportId}', '2020-01-01T00:00:00.0000000+00:00');
         """);
 
+    internal const string OwnerPersonId = "owner";
+    internal const string OwnerIdentityId = "idn-owner";
+    internal const string SamPersonId = "p:idn-1";
+
+    /// <summary>
+    /// Adds an owner and a contact, each with one identity, as the importer would have.
+    /// </summary>
+    internal static void People(TempDatabase db) => db.Execute($"""
+        INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)
+        VALUES ('{OwnerIdentityId}', 'telegram', '777001', 'Kirill', '{ImportId}', '2020-01-01T00:00:00.0000000+00:00');
+
+        INSERT INTO person (id, display_name, is_owner, created_utc)
+        VALUES ('{OwnerPersonId}', 'Kirill', 1, '2020-01-01T00:00:00.0000000+00:00'),
+               ('{SamPersonId}', 'Sam', 0, '2020-01-01T00:00:00.0000000+00:00');
+
+        INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)
+        VALUES ('{OwnerIdentityId}', '{OwnerPersonId}', 'seed', '2020-01-01T00:00:00.0000000+00:00'),
+               ('{IdentityId}', '{SamPersonId}', 'auto', '2020-01-01T00:00:00.0000000+00:00');
+        """);
+
     /// <summary>Inserts one message and returns nothing — tests look it up by uid.</summary>
     internal static void Message(TempDatabase db, string uid, string plaintext, string threadId = ThreadId) =>
         db.Execute($"""

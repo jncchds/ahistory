@@ -155,7 +155,25 @@ public sealed class ImportCommitter : IDisposable
             VALUES ($identity, $person, 'seed', $now)
             ON CONFLICT (identity_id) DO UPDATE SET person_id = $person, confidence = 'seed';
             """, ("$identity", identityId), ("$person", ownerId), ("$now", _nowUtc));
+
+        // EnsureIdentity gave this identity a person of its own a moment ago, and repointing it
+        // at the owner just abandoned that one. Left behind, it shows up in the People list as a
+        // second, empty copy of you.
+        RemoveEmptyPeople();
     }
+
+    /// <summary>
+    /// Drops people nothing points at any more.
+    /// </summary>
+    /// <remarks>
+    /// The owner is exempt: an owner with no identities yet is a legitimate intermediate state,
+    /// and deleting them would take the archive's subject with them.
+    /// </remarks>
+    private void RemoveEmptyPeople() => Execute("""
+        DELETE FROM person
+        WHERE is_owner = 0
+          AND NOT EXISTS (SELECT 1 FROM identity_person ip WHERE ip.person_id = person.id);
+        """);
 
     /// <summary>
     /// Deterministic id for a thread, so the same export always produces the same row.

@@ -256,3 +256,27 @@ not yet one of the owner's, and the CLI warns before importing. The importer can
 account of yours from someone else's archive, so it does not try — it says what it is about to do
 and points at the alternative, which is §9's answer: a third-party archive is a different object
 and belongs in its own save.
+
+---
+
+## D14 — Avalonia 12, and headless tests without the xUnit adapter
+
+The plan named Avalonia 11; the current release is **12.1.2**, and that is what the app targets.
+Two consequences worth recording.
+
+**`TextBox.Watermark` became `PlaceholderText`.** Trivial, except that Avalonia's XAML warnings
+(`AVLN*`) are *not* covered by `TreatWarningsAsErrors` — they pass a build that reports "0
+Warnings". A XAML deprecation or a binding the compiler dislikes will therefore slip through
+unless someone reads the full build log. Worth a periodic `dotnet build -v n | grep AVLN`.
+
+**The headless test adapter was rejected.** `Avalonia.Headless.XUnit` for Avalonia 12 depends on
+xUnit **v3**, and the rest of the solution is on v2 (AGENTS.md). Referencing it produced
+`CS0433: FactAttribute exists in both xunit.core and xunit.v3.core`. Rather than run two test
+frameworks in one repository, `tests/Archive.Ui.Tests/Headless.cs` drives
+`HeadlessUnitTestSession` directly — about fifteen lines, and the only thing the adapter would
+have provided is an `[AvaloniaFact]` attribute.
+
+That helper has an async overload for a specific reason: view models continue on the UI thread by
+design, so blocking that thread inside a test body to wait for one deadlocks instantly — the
+continuation needs the very thread the test is holding. The first version of these tests hung for
+exactly that reason.

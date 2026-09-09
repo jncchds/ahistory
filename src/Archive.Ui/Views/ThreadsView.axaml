@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:data="clr-namespace:Archive.Data;assembly=Archive.Data"
+             x:Class="Archive.Ui.Views.ThreadsView"
+             x:DataType="vm:ThreadsViewModel">
+
+  <DockPanel>
+
+    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Conversations" />
+
+    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+    <Grid ColumnDefinitions="260,16,*">
+
+      <ListBox Grid.Column="0" ItemsSource="{Binding Threads}" SelectedItem="{Binding SelectedThread}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="data:ThreadRow">
+            <StackPanel Margin="0,4">
+              <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="subtle" FontSize="11">
+                <Run Text="{Binding Kind}" />
+                <Run Text="·" />
+                <Run Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+              </TextBlock>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <DockPanel Grid.Column="2">
+
+        <!-- Newest first, so "load older" belongs at the bottom. -->
+        <Button DockPanel.Dock="Bottom" Content="Load older messages" Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                IsVisible="{Binding HasMore}" Command="{Binding LoadMoreCommand}" />
+
+        <ListBox ItemsSource="{Binding Messages}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="data:MessageRow">
+              <StackPanel Margin="0,6">
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock FontWeight="SemiBold" FontSize="12"
+                             Text="{Binding SenderName}" />
+                  <TextBlock Classes="subtle" FontSize="11" Text="{Binding SentAtUtc}" />
+                  <!-- Service messages are events, not things anyone said (§2). -->
+                  <Border Background="#33808080" CornerRadius="3" Padding="4,0"
+                          IsVisible="{Binding ServiceAction, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock FontSize="10" VerticalAlignment="Center" Text="{Binding ServiceAction}" />
+                  </Border>
+                </StackPanel>
+
+                <TextBlock TextWrapping="Wrap" Text="{Binding Plaintext}" />
+
+                <!-- A message whose content is an attachment still has to look like something. -->
+                <TextBlock Classes="subtle" FontSize="11"
+                           IsVisible="{Binding MediaCount}"
+                           Text="{Binding MediaCount, StringFormat='{}{0} attachment(s)'}" />
+
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+      </DockPanel>
+
+    </Grid>
+
+  </DockPanel>
+
+</UserControl>

@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             x:Class="Archive.Ui.Views.ImportView"
+             x:DataType="vm:ImportViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16">
+
+      <TextBlock Classes="heading" Text="Import" />
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Telegram export folder" />
+        <TextBlock Classes="subtle" FontSize="12"
+                   Text="Export from Telegram Desktop as JSON, not HTML. Choose the folder containing result.json." />
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0"
+                  Command="{Binding BrowseCommand}" />
+          <TextBox Text="{Binding ExportFolder}" PlaceholderText="No folder chosen" IsReadOnly="True" />
+        </DockPanel>
+      </StackPanel>
+
+      <!-- Which source this belongs to is a question, not a deduction (decisions.md D11). -->
+      <StackPanel Spacing="6" IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock Text="This export belongs to" />
+        <ComboBox ItemsSource="{Binding SourceChoices}" SelectedItem="{Binding SelectedSource}"
+                  HorizontalAlignment="Stretch">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:SourceChoice">
+              <TextBlock Text="{Binding Display}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+                   Text="{Binding Preview.SuggestionReason}" />
+      </StackPanel>
+
+      <!-- P5: a save is one person's archive, and the importer cannot tell a second account of
+           yours from an archive someone handed you. -->
+      <Border IsVisible="{Binding ShowsAccountWarning}"
+              Background="#33B8860B" BorderBrush="#B8860B" BorderThickness="1"
+              CornerRadius="4" Padding="12">
+        <TextBlock TextWrapping="Wrap" Text="{Binding AccountWarning}" />
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="Import" Command="{Binding ImportCommand}" IsEnabled="{Binding CanImport}" />
+        <ProgressBar IsIndeterminate="True" Width="140" VerticalAlignment="Center"
+                     IsVisible="{Binding IsImporting}" />
+      </StackPanel>
+
+      <!-- Progress is throttled on the background thread before it is posted here. -->
+      <StackPanel Spacing="4" IsVisible="{Binding IsImporting}">
+        <TextBlock Text="{Binding MessagesSeen, StringFormat='{}{0:N0} messages read'}" />
+        <TextBlock Classes="subtle" Text="{Binding ProgressText}" />
+      </StackPanel>
+
+      <TextBlock Foreground="IndianRed" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+
+      <Border IsVisible="{Binding Result, Converter={x:Static ObjectConverters.IsNotNull}}"
+              Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+              CornerRadius="4" Padding="12">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Done" FontWeight="SemiBold" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MessagesSeen, StringFormat='{}{0:N0} messages read'}" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MessagesInserted, StringFormat='{}{0:N0} added'}" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MessagesSkipped, StringFormat='{}{0:N0} already present'}" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MessagesRevised, StringFormat='{}{0:N0} edited since the last export'}" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MediaStored, StringFormat='{}{0:N0} media files stored'}" />
+          <TextBlock Classes="subtle"
+                     Text="{Binding Result.MediaMissing, StringFormat='{}{0:N0} attachments not included in the export'}" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

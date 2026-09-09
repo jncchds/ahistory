@@ -32,7 +32,7 @@ conversation view, keyword search.
 | M1 | Storage — pragmas, migration runner, schema, EF mapping | ✅ |
 | M2 | Content-addressed media store | ✅ |
 | M3 | Telegram importer, proven idempotent | ✅ |
-| M4 | Desktop shell, import UI, identity merging | ⬜ |
+| M4 | Desktop shell, import UI, identity merging | ✅ |
 | M5 | The continuous per-person conversation | ⬜ |
 | M6 | Full-text search | ⬜ |
 | M7 | Packaging for Windows, Linux and macOS | ⬜ |
@@ -82,10 +82,19 @@ dotnet build Ahistory.slnx
 dotnet test Ahistory.slnx
 ```
 
-Create a save:
+Run the app:
+
+```bash
+dotnet run --project src/Archive.Desktop
+```
+
+It opens a save under your local application data by default; pass `--save <path>` for a
+specific one. Or work headlessly:
 
 ```bash
 dotnet run --project src/Archive.Cli -- init ~/archives/mine.db
+dotnet run --project src/Archive.Cli -- import ~/archives/mine.db ~/Downloads/Telegram
+dotnet run --project src/Archive.Cli -- sources ~/archives/mine.db
 ```
 
 ## Layout

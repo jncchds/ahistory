@@ -1,0 +1,38 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:views="clr-namespace:Archive.Ui.Views"
+             x:Class="Archive.Ui.App"
+             RequestedThemeVariant="Default">
+
+  <Application.DataTemplates>
+    <!--
+      Pages are selected by view-model type. Navigation therefore means setting a property to a
+      view model, and no view needs to know what any other view is called.
+    -->
+    <DataTemplate DataType="vm:OverviewViewModel"><views:OverviewView /></DataTemplate>
+    <DataTemplate DataType="vm:ImportViewModel"><views:ImportView /></DataTemplate>
+    <DataTemplate DataType="vm:PeopleViewModel"><views:PeopleView /></DataTemplate>
+    <DataTemplate DataType="vm:ThreadsViewModel"><views:ThreadsView /></DataTemplate>
+  </Application.DataTemplates>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <Style Selector="TextBlock.subtle">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
+
+    <Style Selector="TextBlock.stat">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </Application.Styles>
+
+</Application>
