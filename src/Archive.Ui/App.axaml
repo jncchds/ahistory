@@ -13,6 +13,7 @@
     <DataTemplate DataType="vm:OverviewViewModel"><views:OverviewView /></DataTemplate>
     <DataTemplate DataType="vm:ImportViewModel"><views:ImportView /></DataTemplate>
     <DataTemplate DataType="vm:PeopleViewModel"><views:PeopleView /></DataTemplate>
+    <DataTemplate DataType="vm:PersonViewModel"><views:PersonView /></DataTemplate>
     <DataTemplate DataType="vm:ThreadsViewModel"><views:ThreadsView /></DataTemplate>
   </Application.DataTemplates>
 
@@ -27,6 +28,12 @@
 
     <Style Selector="TextBlock.subtle">
       <Setter Property="Opacity" Value="0.6" />
+    </Style>
+
+    <!-- §4: a group line is context borrowed from elsewhere, so it reads a shade quieter than
+         something said directly to you. -->
+    <Style Selector="TextBlock.fromGroup">
+      <Setter Property="Opacity" Value="0.72" />
     </Style>
 
     <Style Selector="TextBlock.stat">

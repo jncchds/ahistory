@@ -23,6 +23,7 @@ internal sealed class TempSave : IDisposable
         MediaStore = new FileSystemMediaStore(Options);
         Queries = new ArchiveQueries(Database);
         Merger = new IdentityMerger(Database);
+        Conversation = new PersonConversation(Database);
         Runner = new ImportRunner(Database, MediaStore);
     }
 
@@ -31,6 +32,7 @@ internal sealed class TempSave : IDisposable
     internal IMediaStore MediaStore { get; }
     internal ArchiveQueries Queries { get; }
     internal IdentityMerger Merger { get; }
+    internal PersonConversation Conversation { get; }
     internal ImportRunner Runner { get; }
 
     /// <summary>Writes a throwaway Telegram export and returns its folder.</summary>

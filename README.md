@@ -33,7 +33,7 @@ conversation view, keyword search.
 | M2 | Content-addressed media store | ✅ |
 | M3 | Telegram importer, proven idempotent | ✅ |
 | M4 | Desktop shell, import UI, identity merging | ✅ |
-| M5 | The continuous per-person conversation | ⬜ |
+| M5 | The continuous per-person conversation | ✅ |
 | M6 | Full-text search | ⬜ |
 | M7 | Packaging for Windows, Linux and macOS | ⬜ |
 

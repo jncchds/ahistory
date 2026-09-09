@@ -14,13 +14,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ArchiveOptions options,
         OverviewViewModel overview,
         ImportViewModel import,
+        PersonViewModel person,
         PeopleViewModel people,
         ThreadsViewModel threads)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options;
-        Pages = [overview, import, people, threads];
+        Pages = [overview, import, person, people, threads];
         _currentPage = overview;
 
         // An import changes what every other page shows, so they are told rather than left to

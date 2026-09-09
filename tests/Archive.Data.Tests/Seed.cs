@@ -52,6 +52,32 @@ internal static class Seed
                ('{IdentityId}', '{SamPersonId}', 'auto', '2020-01-01T00:00:00.0000000+00:00');
         """);
 
+    /// <summary>
+    /// Puts the owner and the contact in both threads.
+    /// </summary>
+    /// <remarks>
+    /// Participation is what marks a thread as a conversation *with* someone rather than a room
+    /// they happened to be in, so the per-person view depends on these rows existing.
+    /// </remarks>
+    internal static void Participants(TempDatabase db) => db.Execute($"""
+        INSERT INTO thread_participant (thread_id, identity_id, first_seen_unix)
+        VALUES ('{ThreadId}', '{IdentityId}', 1577880000),
+               ('{ThreadId}', '{OwnerIdentityId}', 1577880000),
+               ('{OtherThreadId}', '{IdentityId}', 1577880000),
+               ('{OtherThreadId}', '{OwnerIdentityId}', 1577880000);
+        """);
+
+    /// <summary>Inserts a message from a chosen sender, at a chosen time.</summary>
+    internal static void MessageFrom(
+        TempDatabase db, string uid, string plaintext, string senderIdentityId, long unix, string threadId = ThreadId) =>
+        db.Execute($"""
+            INSERT INTO message (uid, thread_id, sender_identity_id, kind, sent_at_utc, sent_at_unix,
+                                 plaintext, content_hash, first_import_id, importer_version)
+            VALUES ('{uid}', '{threadId}', '{senderIdentityId}', 'message',
+                    '2020-01-01T12:00:00.0000000+00:00', {unix},
+                    '{plaintext}', 'hash-{uid}', '{ImportId}', 'test');
+            """);
+
     /// <summary>Inserts one message and returns nothing — tests look it up by uid.</summary>
     internal static void Message(TempDatabase db, string uid, string plaintext, string threadId = ThreadId) =>
         db.Execute($"""

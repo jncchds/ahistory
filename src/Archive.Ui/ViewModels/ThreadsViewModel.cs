@@ -18,7 +18,7 @@ public sealed partial class ThreadsViewModel(ArchiveQueries queries) : ViewModel
     /// <summary>Page size. Small enough that the first screen is instant on a large thread.</summary>
     private const int PageSize = 100;
 
-    public override string Title => "Conversations";
+    public override string Title => "Threads";
 
     public ObservableCollection<ThreadRow> Threads { get; } = [];
 

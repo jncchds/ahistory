@@ -280,3 +280,28 @@ That helper has an async overload for a specific reason: view models continue on
 design, so blocking that thread inside a test body to wait for one deadlocks instantly — the
 continuation needs the very thread the test is holding. The first version of these tests hung for
 exactly that reason.
+
+---
+
+## D15 — The per-person union query, and what its plan can honestly promise
+
+§4's per-person conversation is one index range scan per source — per direct thread, and per
+identity for that person's group messages — merged with UNION ALL.
+
+**Each arm is wrapped in a subquery.** SQLite rejects `ORDER BY` and `LIMIT` written directly
+inside a UNION branch, and bounding each branch before the merge is the entire point: a single
+outer WHERE and LIMIT over the union makes SQLite materialize every arm in full and then discard
+almost all of it.
+
+**The plan cannot promise "no temp b-tree", and the plan document was wrong to ask for it.**
+SQLite does not merge pre-sorted UNION ALL arms, so the merged rows are sorted once. That sort is
+real but bounded by *(arms × limit)* — a few hundred rows — rather than by the archive. What the
+test does assert is that no arm degenerates into `SCAN message`, which is the failure that a
+fixture would never reveal by timing and that would be ruinous at half a million rows.
+
+Arm count is bounded by how many accounts a person has and how many direct threads they appear
+in: a handful, not a function of archive size.
+
+**Group context is fetched on expand, not with the page.** Most group lines are never expanded,
+and fetching ±8 messages for every one of them would multiply each page load by the context
+radius for content nobody asked to see.

@@ -1,0 +1,124 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:data="clr-namespace:Archive.Data;assembly=Archive.Data"
+             x:Class="Archive.Ui.Views.PersonView"
+             x:DataType="vm:PersonViewModel">
+
+  <UserControl.DataTemplates>
+
+    <!-- §8: silence is content. A summariser that only describes messages papers over it. -->
+    <DataTemplate DataType="vm:SilenceItem">
+      <Grid ColumnDefinitions="*,Auto,*" Margin="0,14">
+        <Border Grid.Column="0" Height="1" Background="#33808080" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Margin="12,0" FontSize="11" Opacity="0.55"
+                   Text="{Binding Text}" />
+        <Border Grid.Column="2" Height="1" Background="#33808080" VerticalAlignment="Center" />
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:MessageItem">
+      <StackPanel Margin="0,5">
+
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding Row.SenderName}" />
+          <TextBlock FontSize="11" Opacity="0.55" Text="{Binding Row.SentAtUtc}" />
+
+          <!-- §4: a group line out of context often reads as nonsense, so it is marked as one
+               and carries the room it was said in. -->
+          <Border Background="#33808080" CornerRadius="3" Padding="5,0"
+                  IsVisible="{Binding Row.IsFromGroup}">
+            <TextBlock FontSize="10" VerticalAlignment="Center" Text="{Binding Row.ThreadTitle}" />
+          </Border>
+
+          <Button Content="context" FontSize="10" Padding="6,1" Background="Transparent"
+                  IsVisible="{Binding CanExpand}" Command="{Binding ToggleContextCommand}" />
+        </StackPanel>
+
+        <TextBlock TextWrapping="Wrap" Text="{Binding Row.Plaintext}"
+                   Classes.fromGroup="{Binding Row.IsFromGroup}" />
+
+        <TextBlock FontSize="11" Opacity="0.55"
+                   IsVisible="{Binding Row.MediaCount}"
+                   Text="{Binding Row.MediaCount, StringFormat='{}{0} attachment(s)'}" />
+
+        <TextBlock FontSize="11" Opacity="0.55" Text="loading context…"
+                   IsVisible="{Binding IsLoadingContext}" />
+
+        <!-- The surrounding conversation, dimmed: it is here to make one line legible, not to
+             become part of this person's stream. -->
+        <Border IsVisible="{Binding IsExpanded}" Margin="0,6,0,2" Padding="10,6"
+                BorderBrush="#33808080" BorderThickness="2,0,0,0">
+          <ItemsControl ItemsSource="{Binding Context}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="data:PersonMessageRow">
+                <StackPanel Margin="0,2" Opacity="0.65">
+                  <TextBlock FontSize="11" FontWeight="SemiBold" Text="{Binding SenderName}" />
+                  <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding Plaintext}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+      </StackPanel>
+    </DataTemplate>
+
+  </UserControl.DataTemplates>
+
+  <DockPanel>
+
+    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Conversations" />
+
+    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+    <Grid ColumnDefinitions="240,16,*">
+
+      <ListBox Grid.Column="0" ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="data:PersonRow">
+            <StackPanel Margin="0,4">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                <Border Background="#33808080" CornerRadius="3" Padding="4,0" IsVisible="{Binding IsOwner}">
+                  <TextBlock Text="you" FontSize="10" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+              <TextBlock FontSize="11" Opacity="0.55"
+                         Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <DockPanel Grid.Column="2">
+
+        <Button DockPanel.Dock="Bottom" Content="Load older" Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                IsVisible="{Binding HasMore}" Command="{Binding LoadMoreCommand}" />
+
+        <!-- Virtualized: a conversation can run to tens of thousands of messages. -->
+        <ItemsControl ItemsSource="{Binding Items}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.Template>
+            <ControlTemplate>
+              <ScrollViewer>
+                <ItemsPresenter />
+              </ScrollViewer>
+            </ControlTemplate>
+          </ItemsControl.Template>
+        </ItemsControl>
+
+      </DockPanel>
+
+    </Grid>
+
+  </DockPanel>
+
+</UserControl>

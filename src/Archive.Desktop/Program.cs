@@ -57,6 +57,7 @@ internal static class Program
         services.AddSingleton<IMediaStore>(_ => new FileSystemMediaStore(options));
         services.AddSingleton<ArchiveQueries>();
         services.AddSingleton<IdentityMerger>();
+        services.AddSingleton<PersonConversation>();
         services.AddSingleton<ImportRunner>();
         services.AddSingleton<IFolderPicker, StorageFolderPicker>();
 
@@ -64,6 +65,7 @@ internal static class Program
         // far back they have scrolled — and navigating away and back should not discard it.
         services.AddSingleton<OverviewViewModel>();
         services.AddSingleton<ImportViewModel>();
+        services.AddSingleton<PersonViewModel>();
         services.AddSingleton<PeopleViewModel>();
         services.AddSingleton<ThreadsViewModel>();
         services.AddSingleton<MainWindowViewModel>();

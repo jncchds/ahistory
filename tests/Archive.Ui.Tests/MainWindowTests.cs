@@ -21,6 +21,7 @@ public sealed class MainWindowTests
         save.Options,
         new OverviewViewModel(save.Queries),
         new ImportViewModel(save.Runner, new NullFolderPicker()),
+        new PersonViewModel(save.Queries, save.Conversation),
         new PeopleViewModel(save.Queries, save.Merger),
         new ThreadsViewModel(save.Queries));
 
@@ -35,7 +36,7 @@ public sealed class MainWindowTests
         var viewModel = Assert.IsType<MainWindowViewModel>(window.DataContext);
 
         Assert.Equal(
-            ["Overview", "Import", "People", "Conversations"],
+            ["Overview", "Import", "Conversations", "People", "Threads"],
             viewModel.Pages.Select(p => p.Title));
 
         Assert.Equal("Overview", viewModel.CurrentPage.Title);
@@ -59,8 +60,9 @@ public sealed class MainWindowTests
         {
             ["Overview"] = typeof(OverviewView),
             ["Import"] = typeof(ImportView),
+            ["Conversations"] = typeof(PersonView),
             ["People"] = typeof(PeopleView),
-            ["Conversations"] = typeof(ThreadsView),
+            ["Threads"] = typeof(ThreadsView),
         };
 
         foreach (var page in viewModel.Pages)
