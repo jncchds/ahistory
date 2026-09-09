@@ -183,7 +183,9 @@ CREATE TABLE message (
     is_deleted         INTEGER NOT NULL DEFAULT 0 CHECK (is_deleted IN (0, 1)),
     session_id         TEXT    REFERENCES session (id) ON DELETE SET NULL,
     -- §1: keep the raw export per message, so a parser gap is re-run rather than re-requested.
-    raw_json           TEXT,
+    -- Brotli-compressed rather than stored as text: measured at 495k messages it was the largest
+    -- single thing in the database, and it is read only when the importer is improved.
+    raw_json           BLOB,
     first_import_id    TEXT    NOT NULL REFERENCES import (id),
     importer_version   TEXT    NOT NULL
 ) STRICT;
@@ -210,8 +212,9 @@ CREATE INDEX ix_message_session      ON message (session_id) WHERE session_id IS
 CREATE TABLE message_source (
     message_id      INTEGER NOT NULL REFERENCES message (id) ON DELETE CASCADE,
     source_id       TEXT    NOT NULL REFERENCES import_source (id) ON DELETE CASCADE,
+    -- No timestamp here: it would be the run.started_utc that first_import_id already points
+    -- at, and at one row per message a redundant ISO string is megabytes of nothing.
     first_import_id TEXT    NOT NULL REFERENCES import (id),
-    seen_utc        TEXT    NOT NULL,
     PRIMARY KEY (message_id, source_id)
 ) STRICT;
 
@@ -228,7 +231,7 @@ CREATE TABLE message_revision (
     plaintext          TEXT    NOT NULL,
     entities_json      TEXT,
     content_hash       TEXT    NOT NULL,
-    raw_json           TEXT,
+    raw_json           BLOB,
     observed_utc       TEXT    NOT NULL
 ) STRICT;
 

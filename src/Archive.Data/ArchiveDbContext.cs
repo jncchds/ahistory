@@ -198,7 +198,6 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.MessageId).HasColumnName("message_id");
             e.Property(x => x.SourceId).HasColumnName("source_id");
             e.Property(x => x.FirstImportId).HasColumnName("first_import_id");
-            e.Property(x => x.SeenUtc).HasColumnName("seen_utc");
         });
 
         b.Entity<MessageRevision>(e =>

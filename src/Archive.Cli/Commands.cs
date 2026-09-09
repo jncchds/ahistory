@@ -1,6 +1,7 @@
 using Archive.Core;
 using Archive.Data;
 using Archive.Import;
+using Archive.Import.Synthetic;
 using Archive.Media;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,6 +29,8 @@ internal static class Commands
                 "hash" => Hash(args),
                 "import" => Import(args),
                 "sources" => Sources(args),
+                "synth" => Synth(args),
+                "stats" => Stats(args),
                 "--help" or "-h" or "help" => Usage(),
                 _ => Unknown(args[0]),
             };
@@ -188,10 +191,19 @@ internal static class Commands
         var started = DateTimeOffset.UtcNow;
         var lastReport = started;
 
+        // Carriage-return progress only works on a terminal. Piped to a file or another command,
+        // every update becomes its own line and buries the result underneath hundreds of them.
+        var showProgress = !Console.IsOutputRedirected;
+
         var stats = runner.Run(args[2], progress =>
         {
-            // Progress is throttled rather than printed per message: at import speed the console
-            // write would dominate the import.
+            if (!showProgress)
+            {
+                return;
+            }
+
+            // Throttled rather than printed per message: at import speed the console write would
+            // dominate the import.
             var now = DateTimeOffset.UtcNow;
 
             if ((now - lastReport).TotalMilliseconds < 250)
@@ -201,7 +213,7 @@ internal static class Commands
 
             lastReport = now;
             Console.Write($"\r{progress.MessagesSeen,9:N0} messages  {Truncate(progress.CurrentChat, 32),-32}");
-        }, sourceId: chosenSource);
+        }, sourceId: chosenSource, storeRawJson: !args.Contains("--no-raw-json"));
 
         var elapsed = DateTimeOffset.UtcNow - started;
         var rate = elapsed.TotalSeconds > 0 ? stats.MessagesSeen / elapsed.TotalSeconds : 0;
@@ -267,6 +279,127 @@ internal static class Commands
         return 0;
     }
 
+    /// <summary>
+    /// Reports what a save is made of, and what it costs.
+    /// </summary>
+    /// <remarks>
+    /// §1 keeps the raw export JSON per message so a parser gap can be re-run rather than
+    /// re-requested. That is worth paying for, but it is the single largest thing in the database
+    /// by a wide margin, and someone deciding whether to keep it should be able to see the number
+    /// rather than guess at it.
+    /// </remarks>
+    private static int Stats(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("usage: ahistory stats <path-to-save.db>");
+            return 2;
+        }
+
+        var options = new ArchiveOptions { DatabasePath = args[1] };
+        options.Validate();
+
+        var database = new Database(options);
+
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT (SELECT count(*) FROM message),
+                   (SELECT count(*) FROM thread),
+                   (SELECT count(*) FROM person),
+                   (SELECT count(*) FROM media),
+                   (SELECT count(*) FROM reaction),
+                   (SELECT total(length(raw_json)) FROM message),
+                   (SELECT total(length(plaintext)) FROM message),
+                   (SELECT total(length(entities_json)) FROM message),
+                   (SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size());
+            """;
+
+        using var reader = command.ExecuteReader();
+        reader.Read();
+
+        var messages = reader.GetInt64(0);
+        var rawJson = reader.GetDouble(5);
+        var plaintext = reader.GetDouble(6);
+        var entities = reader.GetDouble(7);
+        var fileBytes = reader.GetInt64(8);
+
+        var mediaRoot = options.ResolveMediaDirectory();
+        var mediaBytes = Directory.Exists(mediaRoot)
+            ? Directory.EnumerateFiles(mediaRoot, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
+            : 0;
+
+        Console.WriteLine($"messages    {messages:N0}");
+        Console.WriteLine($"threads     {reader.GetInt64(1):N0}");
+        Console.WriteLine($"people      {reader.GetInt64(2):N0}");
+        Console.WriteLine($"media       {reader.GetInt64(3):N0} files, {Mb(mediaBytes)}");
+        Console.WriteLine($"reactions   {reader.GetInt64(4):N0}");
+        Console.WriteLine();
+        Console.WriteLine($"database    {Mb(fileBytes)}");
+        Console.WriteLine($"  raw_json  {Mb((long)rawJson)}  ({Share(rawJson, fileBytes)} of the file)");
+        Console.WriteLine($"  text      {Mb((long)plaintext)}");
+        Console.WriteLine($"  entities  {Mb((long)entities)}");
+
+        if (messages > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"per message {fileBytes / (double)messages:N0} bytes, "
+                            + $"of which {rawJson / messages:N0} is raw_json");
+        }
+
+        return 0;
+    }
+
+    private static string Mb(long bytes) => $"{bytes / 1024.0 / 1024.0:N1} MB";
+
+    private static string Share(double part, long whole) =>
+        whole == 0 ? "—" : $"{part / whole:P0}";
+
+    /// <summary>
+    /// Writes a synthetic Telegram export containing no real data.
+    /// </summary>
+    /// <remarks>
+    /// For seeing the app populated before you have exported your own archive, and for measuring
+    /// it at a size where the query plans matter. It reproduces the awkward properties of a real
+    /// archive — bursts and long silences, a long tail of two-word messages, Cyrillic alongside
+    /// Latin, colliding timestamps, one sticker repeated everywhere — but only shapes the importer
+    /// already understands, so it can never surface a parsing trap nobody has thought of.
+    /// </remarks>
+    private static int Synth(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine(
+                "usage: ahistory synth <output-folder> [--messages N] [--chats N] [--seed N]");
+            return 2;
+        }
+
+        var options = new SyntheticOptions(
+            Messages: Number(args, "--messages") ?? 10_000,
+            Chats: Number(args, "--chats") ?? 20,
+            Seed: Number(args, "--seed") ?? 20260909);
+
+        var started = DateTimeOffset.UtcNow;
+        var summary = SyntheticExport.Write(args[1], options);
+        var elapsed = DateTimeOffset.UtcNow - started;
+
+        Console.WriteLine($"folder    {summary.Folder}");
+        Console.WriteLine($"messages  {summary.Messages:N0}");
+        Console.WriteLine($"chats     {summary.Chats:N0}");
+        Console.WriteLine($"json      {summary.JsonBytes / 1024.0 / 1024.0:N1} MB");
+        Console.WriteLine($"written   in {elapsed.TotalSeconds:N1}s");
+        Console.WriteLine();
+        Console.WriteLine("This contains no real data. Import it like any export:");
+        Console.WriteLine($"  ahistory import <save.db> {summary.Folder}");
+
+        return 0;
+    }
+
+    /// <summary>Reads a numeric <c>--name value</c> option.</summary>
+    private static int? Number(string[] args, string name) =>
+        Option(args, name) is { } text && int.TryParse(text, out var value) ? value : null;
+
     /// <summary>Reads a <c>--name value</c> option, or null when it is absent.</summary>
     private static string? Option(string[] args, string name)
     {
@@ -293,9 +426,12 @@ internal static class Commands
             usage:
               ahistory init <path-to-save.db>   create or migrate a save
               ahistory hash <file>              show the content address a file would take
-              ahistory import <save.db> <folder> [--source <id>]
+              ahistory import <save.db> <folder> [--source <id>] [--no-raw-json]
                                                 import a Telegram export folder
               ahistory sources <save.db>        list the sources in a save
+              ahistory stats <save.db>          what the archive is made of
+              ahistory synth <folder> [--messages N] [--chats N]
+                                                write a synthetic export (no real data)
 
             A save is the .db file plus a media folder beside it. Both are created by `init`.
             """);

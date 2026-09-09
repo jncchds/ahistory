@@ -46,13 +46,15 @@ public sealed class ImportCommitter : IDisposable
         string? sourceLabel,
         string sourcePath,
         string sourceFingerprint,
-        int batchSize = 1000)
+        int batchSize = 1000,
+        bool storeRawJson = true)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(platform);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 
         BatchSize = batchSize > 0 ? batchSize : 1000;
+        StoreRawJson = storeRawJson;
         Platform = platform;
         SourceId = sourceId;
         _connection = database.Open();
@@ -98,6 +100,17 @@ public sealed class ImportCommitter : IDisposable
     public string SourceId { get; }
 
     public int BatchSize { get; }
+
+    /// <summary>
+    /// Whether each message keeps its original export JSON (§1).
+    /// </summary>
+    /// <remarks>
+    /// On by default, because it is what lets a parser gap be re-run rather than re-requested.
+    /// It is also the largest single thing in the database — `ahistory stats` shows the number —
+    /// so it can be turned off by someone who would rather re-import from the export folder,
+    /// which §1 says to keep anyway.
+    /// </remarks>
+    public bool StoreRawJson { get; }
 
     public string ImportId => _importId;
 
@@ -319,14 +332,13 @@ public sealed class ImportCommitter : IDisposable
         // On an unchanged re-import this is an index probe per message rather than a row insert
         // per message — the difference between touching half a million pages and touching none.
         Execute("""
-            INSERT INTO message_source (message_id, source_id, first_import_id, seen_utc)
-            VALUES ($message, $source, $import, $now)
+            INSERT INTO message_source (message_id, source_id, first_import_id)
+            VALUES ($message, $source, $import)
             ON CONFLICT (message_id, source_id) DO NOTHING;
             """,
             ("$message", messageId.Id),
             ("$source", SourceId),
-            ("$import", _importId),
-            ("$now", _nowUtc));
+            ("$import", _importId));
 
         if (senderId is not null && _participants.Add(ParticipantKey(threadId, senderId)))
         {
@@ -426,7 +438,7 @@ public sealed class ImportCommitter : IDisposable
             ("$forwardedAt", message.ForwardedAtUtc),
             ("$viaBot", message.ViaBot),
             ("$edited", message.EditedAtUtc),
-            ("$raw", message.RawJson),
+            ("$raw", StoreRawJson ? RawJson.Compress(message.RawJson) : null),
             ("$import", _importId),
             ("$version", ImporterVersion));
 
@@ -472,7 +484,8 @@ public sealed class ImportCommitter : IDisposable
             existingHash = reader.GetString(1);
             existingText = reader.GetString(2);
             existingEntities = reader.IsDBNull(3) ? DBNull.Value : reader.GetString(3);
-            existingRaw = reader.IsDBNull(4) ? DBNull.Value : reader.GetString(4);
+            // Compressed bytes now (RawJson), so it moves across as a blob rather than text.
+            existingRaw = reader.IsDBNull(4) ? DBNull.Value : reader.GetFieldValue<byte[]>(4);
         }
 
         if (string.Equals(existingHash, message.ContentHash, StringComparison.Ordinal))
@@ -503,7 +516,7 @@ public sealed class ImportCommitter : IDisposable
             ("$entities", message.EntitiesJson),
             ("$hash", message.ContentHash),
             ("$edited", message.EditedAtUtc),
-            ("$raw", message.RawJson),
+            ("$raw", StoreRawJson ? RawJson.Compress(message.RawJson) : null),
             ("$id", id));
 
         Stats.MessagesRevised++;

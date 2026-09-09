@@ -123,6 +123,23 @@ then environment variables prefixed `AHISTORY_` with `__` for nesting — for ex
 `AHISTORY_Archive__DatabasePath`. Invalid configuration throws at startup rather than surfacing
 later as a broken window.
 
+## Try it without an export
+
+If you have not exported your own archive yet, generate one that contains no real data:
+
+```bash
+dotnet run --project src/Archive.Cli -- synth ~/synthetic --messages 200000
+dotnet run --project src/Archive.Cli -- import ~/archives/demo.db ~/synthetic
+dotnet run --project src/Archive.Desktop -- --save ~/archives/demo.db
+```
+
+It reproduces what makes real archives awkward — bursts separated by months of silence, a long
+tail of two-word messages, Cyrillic alongside Latin, colliding timestamps, one sticker repeated
+everywhere. It cannot substitute for a real export when it comes to *parsing*, since it only
+produces shapes the importer already understands.
+
+`ahistory stats <save.db>` reports what an archive is made of and what it costs.
+
 ## Logs
 
 Logs go to `ahistory/logs` under your local application data — deliberately not beside the save,

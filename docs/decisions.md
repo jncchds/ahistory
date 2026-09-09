@@ -362,3 +362,66 @@ that produces a silent app has failed differently.
 The negative control was run deliberately: replacing `{ThreadId}` with `{ThreadName}` in one
 Debug line makes the test fail. The failure mode being guarded against is not malice, it is
 someone adding one helpful-looking chat name six months from now.
+
+---
+
+## D17 — Measured at 495k messages, and what it changed
+
+A synthetic archive (`ahistory synth`) was generated and imported to see what the design actually
+costs. Numbers on this machine, 495,616 messages across 120 chats, ten years, no media beyond one
+repeated sticker:
+
+| | |
+|---|---|
+| Import | 111.7s — **4,436 messages/sec** |
+| Database | **645 MB** (1,365 bytes per message) |
+| Media | 29,191 attachment references → **1 file on disk** |
+| Conversation page | 1.0 ms first page, **0.9 ms two thousand messages deeper** |
+| Thread page | 0.3 ms |
+| Group context expansion | 0.4 ms |
+| Search, rare word | 0.1 ms |
+| Search, very common word | 130 ms |
+
+**Keyset paging does what it was chosen for.** Reading deeper into a conversation costs the same
+as reading the start. An `OFFSET` would have re-read everything it skipped, and at this size the
+difference would be seconds.
+
+**Media deduplication works exactly as §1 predicted** — twenty-nine thousand references, one file.
+
+### Where the 645 MB was
+
+`dbstat` is not compiled into this SQLite build, so each component was measured by dropping it on
+a copy and vacuuming:
+
+| | |
+|---|---|
+| `message.raw_json` | 206 MB |
+| `message_source` | 121 MB |
+| message indexes | 85 MB |
+| `message.entities_json` | 76 MB |
+| `search_document` | 68 MB |
+| FTS5 index | 46 MB |
+| `reaction` | 20 MB |
+
+Two things came out of that.
+
+**raw_json is now Brotli-compressed** (`RawJson`). It is repetitive JSON read only when the
+importer is improved, so compression costs nothing that matters — and the import got *faster*,
+104s against 112s, because less writing outweighs the compressing. The §1 guarantee is unchanged:
+`RawJsonTests` asserts the original text comes back byte for byte.
+
+The gain was smaller than hoped — 645 MB to **550 MB**, not the ~470 MB a 4x ratio would give —
+because each payload is only a few hundred bytes and per-row compression cannot exploit the
+redundancy *between* rows. A shared dictionary would do better and is not worth the complexity yet.
+
+**`message_source.seen_utc` is gone.** It was an ISO timestamp per message duplicating the
+`started_utc` of the run that `first_import_id` already points at. At one row per message a
+redundant string is megabytes of nothing.
+
+`--no-raw-json` now exists for anyone who would rather trade the guarantee for the space, and
+`ahistory stats` reports the number so the choice can be made from evidence rather than guessed.
+
+### What this cannot tell us
+
+The generator only produces shapes the importer already understands, so it can never surface a
+parsing trap nobody has thought of. Format compatibility still waits on a real export.

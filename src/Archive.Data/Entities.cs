@@ -142,7 +142,7 @@ public sealed class Message
     public string? EditedAtUtc { get; set; }
     public bool IsDeleted { get; set; }
     public string? SessionId { get; set; }
-    public string? RawJson { get; set; }
+    public byte[]? RawJson { get; set; }
     public string FirstImportId { get; set; } = string.Empty;
     public string ImporterVersion { get; set; } = string.Empty;
 }
@@ -160,7 +160,6 @@ public sealed class MessageSource
     public long MessageId { get; set; }
     public string SourceId { get; set; } = string.Empty;
     public string FirstImportId { get; set; } = string.Empty;
-    public string SeenUtc { get; set; } = string.Empty;
 }
 
 public sealed class MessageRevision
@@ -171,7 +170,7 @@ public sealed class MessageRevision
     public string Plaintext { get; set; } = string.Empty;
     public string? EntitiesJson { get; set; }
     public string ContentHash { get; set; } = string.Empty;
-    public string? RawJson { get; set; }
+    public byte[]? RawJson { get; set; }
     public string ObservedUtc { get; set; } = string.Empty;
 }
 

@@ -55,11 +55,16 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
     /// The source to attribute this run to. Null takes the preview's suggestion, which is what a
     /// non-interactive caller wants; the UI passes the user's answer instead.
     /// </param>
+    /// <param name="storeRawJson">
+    /// Whether to keep each message's original export JSON (§1). The largest single thing in the
+    /// database; `ahistory stats` reports how much.
+    /// </param>
     public ImportStats Run(
         string exportFolder,
         Action<ImportProgress>? onProgress = null,
         int batchSize = 1000,
-        string? sourceId = null)
+        string? sourceId = null,
+        bool storeRawJson = true)
     {
         var (folder, files) = Locate(exportFolder);
         var preview = ImportSourceResolver.Preview(_database, folder, files);
@@ -72,7 +77,8 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
             : null;
 
         using var committer = new ImportCommitter(
-            _database, TelegramNormalizer.Platform, resolvedSource, label, folder, Fingerprint(files), batchSize);
+            _database, TelegramNormalizer.Platform, resolvedSource, label, folder,
+            Fingerprint(files), batchSize, storeRawJson);
 
         // The folder path is the one piece of user-chosen text logged here on purpose: an import
         // that cannot say where it read from is very hard to diagnose. Nothing from inside the
