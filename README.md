@@ -154,6 +154,16 @@ of the fixture's own words reach the log.
 
 Pass `--verbose` to either the app or the CLI for debug-level detail.
 
+## Releases
+
+Pushing a `release/x.y.z` branch builds standalone packages for Windows, Linux and macOS and
+attaches them to a **draft** GitHub release. Publishing that draft is what creates the tag — a
+branch keeps moving, and "what shipped as 0.1.0" should be answered by something that does not.
+
+Builds are self-contained and untrimmed (EF Core reflection does not survive trimming), around
+115 MB per platform, and **unsigned**: Windows SmartScreen will warn and macOS will refuse to open
+them until allowed in System Settings.
+
 ## Documentation
 
 - **[message-archive-design.md](message-archive-design.md)** — the authoritative design spec.

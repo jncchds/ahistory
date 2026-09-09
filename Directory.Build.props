@@ -22,6 +22,12 @@
     -->
     <InvariantGlobalization>true</InvariantGlobalization>
 
+    <!--
+      Overridden by the release workflow, which derives the real version from the
+      release/x.y.z branch name. A local build says so rather than claiming to be a release.
+    -->
+    <Version>0.1.0-dev</Version>
+
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 

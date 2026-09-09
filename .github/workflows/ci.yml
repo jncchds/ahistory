@@ -1,0 +1,70 @@
+name: CI
+
+# Runs on the three platforms the app claims to support. That claim (AGENTS.md P7) has otherwise
+# only ever been checked on Windows, and the parts most likely to break elsewhere — path
+# separators, case-sensitive filesystems, SQLite file locking — are exactly the parts a
+# Windows-only run cannot exercise.
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Don't cancel the other platforms when one fails: knowing it breaks on Linux *and* macOS
+      # is a different problem from knowing it breaks on Linux.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Ahistory.slnx
+
+      - name: Build
+        # Warnings are errors by policy, so this is where that is enforced for real.
+        run: dotnet build Ahistory.slnx -c Release --no-restore
+
+      - name: Check for XAML warnings
+        # Avalonia's AVLN warnings are not covered by TreatWarningsAsErrors (decisions.md D14),
+        # so they pass a build that reports zero warnings unless something looks for them.
+        shell: bash
+        run: |
+          dotnet build Ahistory.slnx -c Release --no-incremental -v n 2>&1 | tee build.log
+          if grep -q "warning AVLN" build.log; then
+            echo "::error::Avalonia XAML warnings found"
+            grep "warning AVLN" build.log
+            exit 1
+          fi
+
+      - name: Test
+        # Perf tests generate and import a synthetic archive; they run separately.
+        run: dotnet test Ahistory.slnx -c Release --no-build --filter "Category!=Perf" --logger "console;verbosity=normal"
+
+  scale:
+    name: scale
+    runs-on: ubuntu-latest
+    # Only on the trunk: a minute of generating and importing half a million messages is worth
+    # paying on main, not on every push to every branch.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Scale tests
+        run: dotnet test Ahistory.slnx -c Release --filter "Category=Perf" --logger "console;verbosity=normal"

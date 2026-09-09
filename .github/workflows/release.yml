@@ -1,0 +1,175 @@
+name: Release
+
+# Building a release/x.y.z branch produces standalone builds for every platform.
+#
+# A note on the trigger. A branch keeps moving, so "what shipped as 0.1.0" is only ever the branch
+# as it was at some moment; a tag is immutable and answers that permanently. This workflow
+# therefore builds a *draft* release from the branch, and the draft is published — which creates
+# the tag — when the branch is actually ready. The artifacts are attached either way, so a
+# release branch is buildable and testable long before it is declared final.
+on:
+  push:
+    branches: ['release/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, e.g. 0.1.0'
+        required: true
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+
+    steps:
+      - name: Derive the version
+        id: derive
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # refs/heads/release/0.1.0 -> 0.1.0
+            VERSION="${GITHUB_REF#refs/heads/release/}"
+          fi
+
+          # Fail loudly rather than shipping something called "release/0.1.0" or an empty string.
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            echo "::error::'$VERSION' is not a version. Name the branch release/0.1.0."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION"
+
+  test:
+    name: test
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Nothing is packaged before the tests pass on every platform it is packaged for.
+      - name: Test
+        run: dotnet test Ahistory.slnx -c Release --filter "Category!=Perf"
+
+  package:
+    name: ${{ matrix.rid }}
+    needs: [version, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+            archive: zip
+          - rid: linux-x64
+            os: ubuntu-latest
+            archive: tar
+          - rid: osx-x64
+            os: macos-latest
+            archive: tar
+          - rid: osx-arm64
+            os: macos-latest
+            archive: tar
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish
+        shell: bash
+        # Self-contained and untrimmed: EF Core's reflection does not survive trimming
+        # (decisions.md D1), so the size is the price of the app running with no .NET installed.
+        run: |
+          for project in Archive.Desktop Archive.Cli; do
+            dotnet publish "src/$project" \
+              -c Release \
+              -r ${{ matrix.rid }} \
+              --self-contained true \
+              -p:Version=${{ needs.version.outputs.version }} \
+              -p:InformationalVersion=${{ needs.version.outputs.version }}+${{ github.sha }} \
+              -o "publish/${{ matrix.rid }}"
+          done
+
+      - name: Strip native debug symbols
+        shell: bash
+        # libSkiaSharp.pdb and libHarfBuzzSharp.pdb are ~100 MB of native symbols nobody
+        # debugging this app will use. Our own managed .pdb files stay, so a stack trace in the
+        # log still has line numbers in it.
+        run: |
+          find "publish/${{ matrix.rid }}" -name '*.pdb' ! -name 'Archive.*.pdb' -delete
+          du -sh "publish/${{ matrix.rid }}"
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.zip"
+
+      - name: Archive (tar)
+        if: matrix.archive == 'tar'
+        shell: bash
+        # tar, not zip, so the executable bit survives — a zip would hand Linux and macOS users a
+        # file they have to chmod before it runs.
+        run: tar -czf "ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}
+          path: ahistory-${{ needs.version.outputs.version }}-${{ matrix.rid }}.*
+          if-no-files-found: error
+
+  draft:
+    name: draft release
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Draft the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: ahistory ${{ needs.version.outputs.version }}
+          # A draft, not a release: publishing it is what creates the tag, and that should be a
+          # deliberate act rather than a side effect of pushing to a branch.
+          draft: true
+          files: artifacts/*
+          body: |
+            Standalone builds of ahistory ${{ needs.version.outputs.version }}. No .NET
+            installation is required.
+
+            | Platform | Download |
+            |---|---|
+            | Windows | `ahistory-${{ needs.version.outputs.version }}-win-x64.zip` |
+            | Linux | `ahistory-${{ needs.version.outputs.version }}-linux-x64.tar.gz` |
+            | macOS (Apple silicon) | `ahistory-${{ needs.version.outputs.version }}-osx-arm64.tar.gz` |
+            | macOS (Intel) | `ahistory-${{ needs.version.outputs.version }}-osx-x64.tar.gz` |
+
+            **These builds are unsigned.** Windows SmartScreen will warn, and macOS will refuse to
+            open them until you allow it in System Settings → Privacy & Security. Signing needs
+            certificates this project does not have.
+
+            Run `Archive.Desktop` for the app, or `Archive.Cli` for the command line.
+            Your archive is a `.db` file plus a media folder beside it; nothing leaves your machine.
