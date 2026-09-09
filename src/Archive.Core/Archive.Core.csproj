@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+  <!-- Core depends on nothing. Keep it that way. -->
+
+</Project>

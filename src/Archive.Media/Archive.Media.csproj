@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
+  </ItemGroup>
+
+</Project>

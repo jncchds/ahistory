@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+  <!-- The desktop head stays thin: AppBuilder, DI wiring, publish targets. UI lives in Archive.Ui. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Ui/Archive.Ui.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
+    <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
+    <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />
+  </ItemGroup>
+
+</Project>
