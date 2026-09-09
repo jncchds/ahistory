@@ -14,9 +14,27 @@ public sealed class SaveMeta
     public string CreatedUtc { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Where data came from, as distinct from the act of importing it.
+/// </summary>
+/// <remarks>
+/// A newer export of the same account is a new version of one source, not a second source.
+/// Messages belong to sources; the UI filters on sources; §9 provenance is a property of one.
+/// </remarks>
+public sealed class ImportSource
+{
+    public string Id { get; set; } = string.Empty;
+    public string Platform { get; set; } = string.Empty;
+    public string? Label { get; set; }
+    public string? Provenance { get; set; }
+    public string CreatedUtc { get; set; } = string.Empty;
+}
+
+/// <summary>One run of an import — one act of importing a source.</summary>
 public sealed class Import
 {
     public string Id { get; set; } = string.Empty;
+    public string SourceId { get; set; } = string.Empty;
     public string Platform { get; set; } = string.Empty;
     public string SourcePath { get; set; } = string.Empty;
     public string SourceFingerprint { get; set; } = string.Empty;
@@ -130,13 +148,18 @@ public sealed class Message
 }
 
 /// <summary>
-/// Which imports a message was seen in — the source of the UI's "show only these imports" filter.
+/// Which sources a message belongs to — what the UI's "show only these" filter reads.
 /// </summary>
-public sealed class MessageImport
+/// <remarks>
+/// Keyed by source rather than by run, so re-importing a newer export writes rows only for
+/// messages that are genuinely new. <see cref="FirstImportId"/> keeps the run-level answer:
+/// what a particular run added, and therefore what withdrawing it would remove.
+/// </remarks>
+public sealed class MessageSource
 {
     public long MessageId { get; set; }
-    public string ImportId { get; set; } = string.Empty;
-    public bool IsFirst { get; set; }
+    public string SourceId { get; set; } = string.Empty;
+    public string FirstImportId { get; set; } = string.Empty;
     public string SeenUtc { get; set; } = string.Empty;
 }
 

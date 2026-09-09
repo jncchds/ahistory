@@ -13,7 +13,7 @@ namespace Archive.Import.Tests;
 /// uid rather than by rowid, so the digest describes the archive's content and not its storage.
 /// </para>
 /// <para>
-/// Deliberately excluded: <c>import</c> and <c>message_import</c>, and every <c>first_import_id</c>
+/// Deliberately excluded: <c>import</c> and <c>message_source</c>, and every <c>first_import_id</c>
 /// and timestamp column. Those legitimately change when the same export is imported a second
 /// time — a second import genuinely happened — while the archive's content must not. Keeping them
 /// out is what lets the idempotency test assert the strong claim rather than a weakened one.

@@ -31,30 +31,43 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
     /// Called as messages are committed. The caller marshals to a UI thread if it needs to;
     /// nothing here touches one.
     /// </param>
+    /// <summary>
+    /// Inspects an export folder without writing anything, so the caller can ask the user which
+    /// source it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Reads only far enough to find the export's personal_information block — a few kilobytes,
+    /// not a pass over the whole file.
+    /// </remarks>
+    public ImportPreview Preview(string exportFolder)
+    {
+        var (folder, files) = Locate(exportFolder);
+
+        return ImportSourceResolver.Preview(_database, folder, files);
+    }
+
+    /// <param name="sourceId">
+    /// The source to attribute this run to. Null takes the preview's suggestion, which is what a
+    /// non-interactive caller wants; the UI passes the user's answer instead.
+    /// </param>
     public ImportStats Run(
         string exportFolder,
         Action<ImportProgress>? onProgress = null,
-        int batchSize = 1000)
+        int batchSize = 1000,
+        string? sourceId = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(exportFolder);
+        var (folder, files) = Locate(exportFolder);
+        var preview = ImportSourceResolver.Preview(_database, folder, files);
 
-        var folder = Path.GetFullPath(exportFolder);
+        var resolvedSource = sourceId ?? preview.SuggestedSourceId;
 
-        if (!Directory.Exists(folder))
-        {
-            throw new DirectoryNotFoundException($"No such export folder: {folder}");
-        }
-
-        var files = ResultFiles(folder);
-
-        if (files.Length == 0)
-        {
-            throw new InvalidDataException(
-                $"'{folder}' contains no result.json. Export from Telegram Desktop as JSON, not HTML (§2).");
-        }
+        // The label only lands if the source is new; an existing one keeps whatever it is called.
+        var label = string.Equals(resolvedSource, preview.SuggestedSourceId, StringComparison.Ordinal)
+            ? preview.SuggestedLabel
+            : null;
 
         using var committer = new ImportCommitter(
-            _database, TelegramNormalizer.Platform, folder, Fingerprint(files), batchSize);
+            _database, TelegramNormalizer.Platform, resolvedSource, label, folder, Fingerprint(files), batchSize);
 
         try
         {
@@ -76,6 +89,29 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
             committer.Fail(ex.Message);
             throw;
         }
+    }
+
+    /// <summary>Validates an export folder and finds its JSON files.</summary>
+    private static (string Folder, string[] Files) Locate(string exportFolder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportFolder);
+
+        var folder = Path.GetFullPath(exportFolder);
+
+        if (!Directory.Exists(folder))
+        {
+            throw new DirectoryNotFoundException($"No such export folder: {folder}");
+        }
+
+        var files = ResultFiles(folder);
+
+        if (files.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"'{folder}' contains no result.json. Export from Telegram Desktop as JSON, not HTML (§2).");
+        }
+
+        return (folder, files);
     }
 
     /// <summary>

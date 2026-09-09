@@ -40,6 +40,53 @@ public static class TelegramExportReader
     /// <summary>Guards against a single pathological value consuming unbounded memory.</summary>
     private const int MaxBufferSize = 64 * 1024 * 1024;
 
+    /// <summary>
+    /// Reads only the export's personal_information block, then stops.
+    /// </summary>
+    /// <remarks>
+    /// Used to identify which account an export belongs to before committing anything, so the
+    /// import can be attributed to the right source — and so the user can be asked when it is not
+    /// obvious. personal_information sits near the top of the file, so this costs a few kilobytes
+    /// rather than a full pass over a gigabyte.
+    /// </remarks>
+    public static JsonElement? ReadPersonalInformation(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        var probe = new ProbeSink();
+
+        try
+        {
+            Read(stream, probe);
+        }
+        catch (StopReading)
+        {
+            // Expected: the probe found what it came for and asked to stop.
+        }
+
+        return probe.PersonalInformation;
+    }
+
+    /// <summary>Signals that a sink has seen everything it needs and reading should end.</summary>
+    private sealed class StopReading : Exception;
+
+    private sealed class ProbeSink : ITelegramExportSink
+    {
+        internal JsonElement? PersonalInformation { get; private set; }
+
+        public void OnPersonalInformation(JsonElement element)
+        {
+            PersonalInformation = element.Clone();
+            throw new StopReading();
+        }
+
+        // A single-chat export has no personal_information at all. Reaching the first message
+        // means there will not be one, so there is nothing further to wait for.
+        public void OnChat(TelegramChatHeader chat) { }
+
+        public void OnMessage(TelegramChatHeader chat, JsonElement message) => throw new StopReading();
+    }
+
     public static void Read(Stream stream, ITelegramExportSink sink)
     {
         ArgumentNullException.ThrowIfNull(stream);

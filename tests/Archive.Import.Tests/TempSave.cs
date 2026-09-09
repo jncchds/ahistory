@@ -37,6 +37,32 @@ internal sealed class TempSave : IDisposable
 
     internal string Digest() => DatabaseDigest.Of(Database);
 
+    internal void Execute(string sql)
+    {
+        using var connection = Database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Import run ids, oldest first.</summary>
+    internal string[] ImportIdsInOrder()
+    {
+        using var connection = Database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM import ORDER BY started_utc, rowid;";
+
+        var ids = new List<string>();
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            ids.Add(reader.GetString(0));
+        }
+
+        return [.. ids];
+    }
+
     internal T? Scalar<T>(string sql)
     {
         using var connection = Database.Open();

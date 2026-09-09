@@ -34,13 +34,27 @@ public sealed class ImportCommitter : IDisposable
     private SqliteTransaction? _transaction;
     private int _pendingInBatch;
 
-    public ImportCommitter(Database database, string platform, string sourcePath, string sourceFingerprint, int batchSize = 1000)
+    /// <param name="sourceId">
+    /// The source this run belongs to. A newer export of an account already in the archive uses
+    /// the same source id as the run that first imported it, which is what makes a re-import
+    /// cheap: messages already belonging to the source are not re-linked.
+    /// </param>
+    public ImportCommitter(
+        Database database,
+        string platform,
+        string sourceId,
+        string? sourceLabel,
+        string sourcePath,
+        string sourceFingerprint,
+        int batchSize = 1000)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentException.ThrowIfNullOrWhiteSpace(platform);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 
         BatchSize = batchSize > 0 ? batchSize : 1000;
         Platform = platform;
+        SourceId = sourceId;
         _connection = database.Open();
         _importId = Guid.NewGuid().ToString("N");
         _nowUtc = DateTimeOffset.UtcNow.ToString("O");
@@ -51,11 +65,25 @@ public sealed class ImportCommitter : IDisposable
             ON CONFLICT (id) DO NOTHING;
             """, ("$now", _nowUtc));
 
+        // A label is only set when the source is created. Re-running an import must not silently
+        // rename a source the user renamed themselves.
         Execute("""
-            INSERT INTO import (id, platform, source_path, source_fingerprint, importer_version, status, started_utc)
-            VALUES ($id, $platform, $path, $fingerprint, $version, 'running', $started);
+            INSERT INTO import_source (id, platform, label, created_utc)
+            VALUES ($id, $platform, $label, $now)
+            ON CONFLICT (id) DO NOTHING;
+            """,
+            ("$id", sourceId),
+            ("$platform", platform),
+            ("$label", sourceLabel),
+            ("$now", _nowUtc));
+
+        Execute("""
+            INSERT INTO import (id, source_id, platform, source_path, source_fingerprint,
+                                importer_version, status, started_utc)
+            VALUES ($id, $source, $platform, $path, $fingerprint, $version, 'running', $started);
             """,
             ("$id", _importId),
+            ("$source", sourceId),
             ("$platform", platform),
             ("$path", sourcePath),
             ("$fingerprint", sourceFingerprint),
@@ -66,6 +94,8 @@ public sealed class ImportCommitter : IDisposable
     }
 
     public string Platform { get; }
+
+    public string SourceId { get; }
 
     public int BatchSize { get; }
 
@@ -267,14 +297,17 @@ public sealed class ImportCommitter : IDisposable
             }
         }
 
+        // Keyed by source, so a re-run of a source the message already belongs to writes nothing.
+        // On an unchanged re-import this is an index probe per message rather than a row insert
+        // per message — the difference between touching half a million pages and touching none.
         Execute("""
-            INSERT INTO message_import (message_id, import_id, is_first, seen_utc)
-            VALUES ($message, $import, $first, $now)
-            ON CONFLICT (message_id, import_id) DO NOTHING;
+            INSERT INTO message_source (message_id, source_id, first_import_id, seen_utc)
+            VALUES ($message, $source, $import, $now)
+            ON CONFLICT (message_id, source_id) DO NOTHING;
             """,
             ("$message", messageId.Id),
+            ("$source", SourceId),
             ("$import", _importId),
-            ("$first", isFirst ? 1 : 0),
             ("$now", _nowUtc));
 
         if (senderId is not null && _participants.Add(ParticipantKey(threadId, senderId)))

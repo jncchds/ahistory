@@ -143,27 +143,46 @@ part of the stored file's identity, not cosmetic, and the content-addressed path
 
 ---
 
-## D11 — `message_import`: every import a message appeared in
+## D11 — Sources and runs: a re-export is a new version, not a new import
 
-**Spec has:** one import reference per message. **We add:** a link table recording every import
-a message was seen in.
+**Spec has:** one import reference per message. **We have:** two levels — an
+`import_source` (where data came from) and an `import` (one run of importing it) — with
+messages linked to the source.
 
-`message.first_import_id` is provenance — where the row came from — and never changes. That is a
-different question from "which exports contain this message", which is what the UI needs in
-order to filter the archive by source. The two diverge as soon as exports overlap, and
-overlapping exports are the normal case: a fresh export of a chat you already imported contains
-almost entirely messages you already have.
+Re-exporting an account six months later does not produce a new source. It produces a newer
+version of one. Modelling it as a second import had two costs:
 
-Two things this buys beyond the filter:
+- **Every re-import wrote one row per message.** A 500k-message archive paid 500k writes to
+  record that almost nothing had changed. Keyed by source, a re-run inserts rows only for
+  messages that are genuinely new; for the rest it is an index probe that writes nothing.
+- **The filter was answering the wrong question.** "Show me what came from my Telegram" is
+  about origin, not about how many times import was pressed. §9 provenance is likewise a
+  property of a source, so `provenance` and an editable `label` live there.
 
-- **"What did this import actually add?"** is one indexed read, via the denormalized `is_first`
-  flag, rather than a comparison against the whole archive.
-- **An import becomes reversible.** The messages belonging only to import X are those with no
-  other row in `message_import`, so an unwanted or mis-parsed import can be withdrawn without
-  disturbing the rest of the archive.
+`message_source.first_import_id` keeps the run-level answer available: what a particular run
+added is one indexed read, which is what makes a bad run reversible.
 
-The alternative — inferring the set from `first_import_id` alone — cannot answer either question,
-because a message that arrived in three exports is recorded as belonging to one.
+### Which source an export belongs to is a question, not a deduction
+
+`ImportRunner.Preview` reads only the export's personal_information block — a few kilobytes —
+and returns the detected account, every existing source with its message count, a suggestion,
+and the reason for it. The caller decides; `Run(..., sourceId:)` takes the answer.
+
+The suggestion ladder, strongest first:
+
+1. The export names its account and a source for it exists — extend it. Unambiguous.
+2. The export names its account and no such source exists — create it.
+3. The export names no account (a single-chat export) and exactly one source exists for the
+   platform — suggest extending it. A save holds one person's archive, so this is usually
+   right. Usually, not certainly, which is why it is a suggestion.
+4. Otherwise — a source named after the folder, for the user to redirect.
+
+Auto-detection must not decide on its own: only the user knows whether a folder is a fresh
+export of their own account or an archive someone handed them that happens to overlap, and
+merging those two conflates the provenance of two different people.
+
+A label is written only when a source is created, so a re-run never renames a source the
+user renamed.
 
 ---
 
@@ -201,8 +220,8 @@ archive — only to discover every message was already present. Media is therefo
 through a callback the committer invokes only when a message is new or revised.
 `A_re_import_does_not_touch_the_media_store` holds that line.
 
-**`message_import` is written every time.** One indexed insert per message, so a 500k-message
-re-import writes 500k rows. That is the price of being able to filter the archive by import and
-to withdraw one later (D11), and it is paid deliberately. It is bounded, batched, and does not
-block readers — but it does mean a re-import is proportional to the size of the export rather
-than to the number of new messages.
+**`message_source` is written only for new messages.** Keyed by source rather than by run
+(D11), so an unchanged re-import performs one index probe per message and writes no rows at all.
+A re-import is therefore proportional to what actually changed, not to the size of the export —
+which, together with media no longer being re-hashed, is what makes re-running a large export
+cheap enough to do routinely.

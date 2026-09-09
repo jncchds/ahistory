@@ -21,6 +21,7 @@ internal static class Commands
                 "init" => Init(args),
                 "hash" => Hash(args),
                 "import" => Import(args),
+                "sources" => Sources(args),
                 "--help" or "-h" or "help" => Usage(),
                 _ => Unknown(args[0]),
             };
@@ -143,6 +144,28 @@ internal static class Commands
         var mediaStore = new FileSystemMediaStore(options);
         var runner = new ImportRunner(database, mediaStore);
 
+        // Auto-detection suggests; the caller decides. --source is how a scripted caller answers
+        // the question the import UI will ask.
+        var chosenSource = Option(args, "--source");
+        var preview = runner.Preview(args[2]);
+
+        Console.WriteLine($"source   {chosenSource ?? preview.SuggestedSourceId}");
+
+        if (chosenSource is null)
+        {
+            Console.WriteLine($"         {preview.SuggestionReason}");
+
+            if (preview.ExistingSources.Count > 1)
+            {
+                Console.WriteLine("         other sources in this archive (use --source to pick one):");
+
+                foreach (var option in preview.ExistingSources.Where(s => !s.IsSuggested))
+                {
+                    Console.WriteLine($"           {option.Id}  ({option.MessageCount:N0} messages)");
+                }
+            }
+        }
+
         var started = DateTimeOffset.UtcNow;
         var lastReport = started;
 
@@ -159,7 +182,7 @@ internal static class Commands
 
             lastReport = now;
             Console.Write($"\r{progress.MessagesSeen,9:N0} messages  {Truncate(progress.CurrentChat, 32),-32}");
-        });
+        }, sourceId: chosenSource);
 
         var elapsed = DateTimeOffset.UtcNow - started;
         var rate = elapsed.TotalSeconds > 0 ? stats.MessagesSeen / elapsed.TotalSeconds : 0;
@@ -174,6 +197,63 @@ internal static class Commands
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Lists the sources in a save — what the archive can be filtered by, and what an import can
+    /// be attributed to.
+    /// </summary>
+    private static int Sources(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("usage: ahistory sources <path-to-save.db>");
+            return 2;
+        }
+
+        var options = new ArchiveOptions { DatabasePath = args[1] };
+        options.Validate();
+
+        var database = new Database(options);
+        database.Migrate();
+
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.id,
+                   ifnull(s.label, '-'),
+                   (SELECT count(*) FROM message_source ms WHERE ms.source_id = s.id),
+                   (SELECT count(*) FROM import i WHERE i.source_id = s.id)
+            FROM import_source s
+            ORDER BY 3 DESC, s.id;
+            """;
+
+        using var reader = command.ExecuteReader();
+        var any = false;
+
+        while (reader.Read())
+        {
+            any = true;
+            Console.WriteLine($"{reader.GetString(0)}");
+            Console.WriteLine($"  label    {reader.GetString(1)}");
+            Console.WriteLine($"  messages {reader.GetInt64(2):N0}");
+            Console.WriteLine($"  runs     {reader.GetInt64(3):N0}");
+        }
+
+        if (!any)
+        {
+            Console.WriteLine("no sources yet — import an export first.");
+        }
+
+        return 0;
+    }
+
+    /// <summary>Reads a <c>--name value</c> option, or null when it is absent.</summary>
+    private static string? Option(string[] args, string name)
+    {
+        var index = Array.IndexOf(args, name);
+
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
     private static string Truncate(string value, int length) =>
@@ -194,7 +274,9 @@ internal static class Commands
             usage:
               ahistory init <path-to-save.db>   create or migrate a save
               ahistory hash <file>              show the content address a file would take
-              ahistory import <save.db> <folder> import a Telegram export folder
+              ahistory import <save.db> <folder> [--source <id>]
+                                                import a Telegram export folder
+              ahistory sources <save.db>        list the sources in a save
 
             A save is the .db file plus a media folder beside it. Both are created by `init`.
             """);

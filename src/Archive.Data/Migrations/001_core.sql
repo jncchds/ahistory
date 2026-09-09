@@ -12,9 +12,31 @@ CREATE TABLE save_meta (
     created_utc   TEXT NOT NULL
 ) STRICT;
 
--- §1: every message traces back to a row here.
+-- Where data came from, as distinct from the act of importing it.
+--
+-- Re-exporting an account six months later does not produce a new source — it produces a newer
+-- version of the same one. Messages belong to a source; the UI filters on a source; §9's
+-- provenance is a property of a source. Runs of an import are recorded separately, below.
+--
+-- The id is derived from the account the export belongs to (telegram:account:777001), so two
+-- exports of the same account land on one source without anyone having to say so.
+CREATE TABLE import_source (
+    id          TEXT PRIMARY KEY,
+    platform    TEXT NOT NULL,
+    -- Editable: this is what the filter shows, and "telegram:account:777001" is not a name.
+    label       TEXT,
+    -- §9: where this came from and who gave it to you. Required for third-party archives.
+    provenance  TEXT,
+    created_utc TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX ix_import_source_platform ON import_source (platform);
+
+-- §1: every message traces back to a row here. One row per *run* — per act of importing —
+-- so a source's history is auditable even though its messages are not re-linked each time.
 CREATE TABLE import (
     id                 TEXT PRIMARY KEY,
+    source_id          TEXT NOT NULL REFERENCES import_source (id) ON DELETE CASCADE,
     platform           TEXT NOT NULL,
     source_path        TEXT NOT NULL,
     source_fingerprint TEXT NOT NULL,
@@ -173,27 +195,28 @@ CREATE INDEX ix_message_content_hash ON message (content_hash);
 CREATE INDEX ix_message_reply        ON message (reply_to_uid) WHERE reply_to_uid IS NOT NULL;
 CREATE INDEX ix_message_session      ON message (session_id) WHERE session_id IS NOT NULL;
 
--- Every import a message was seen in, not just the one that discovered it.
+-- Which sources a message belongs to — the table the UI's "show only these" filter reads.
 --
--- message.first_import_id answers "where did this row come from"; that is provenance and it
--- never changes. This table answers a different question: "which exports contain this message",
--- which is what the UI filters on. The two diverge as soon as exports overlap — the common case
--- is a fresh export of a chat you already imported, where most messages are in both.
+-- Deliberately keyed by SOURCE, not by run. Re-importing a newer export of an account you
+-- already have would otherwise write one row per message every time, so a 500k-message archive
+-- would pay 500k writes to learn that almost nothing changed. Keyed by source, a re-run inserts
+-- rows only for messages that are genuinely new.
 --
--- It also makes an import reversible: the messages that belong only to import X are the ones
--- with no other row here, so a bad or unwanted import can be withdrawn without touching the
--- rest of the archive.
-CREATE TABLE message_import (
-    message_id INTEGER NOT NULL REFERENCES message (id) ON DELETE CASCADE,
-    import_id  TEXT    NOT NULL REFERENCES import (id) ON DELETE CASCADE,
-    -- 1 when this import is where the message first appeared. Denormalized from
-    -- message.first_import_id so "what did this import actually add?" is one indexed read.
-    is_first   INTEGER NOT NULL DEFAULT 0 CHECK (is_first IN (0, 1)),
-    seen_utc   TEXT    NOT NULL,
-    PRIMARY KEY (message_id, import_id)
+-- A message can still belong to several sources — your own export and an archive someone gave
+-- you may both contain the same group conversation — which is exactly what the filter is for.
+--
+-- first_import_id keeps the run-level answer available: "what did this particular run add?" is
+-- one indexed read, and it is what makes a bad run reversible.
+CREATE TABLE message_source (
+    message_id      INTEGER NOT NULL REFERENCES message (id) ON DELETE CASCADE,
+    source_id       TEXT    NOT NULL REFERENCES import_source (id) ON DELETE CASCADE,
+    first_import_id TEXT    NOT NULL REFERENCES import (id),
+    seen_utc        TEXT    NOT NULL,
+    PRIMARY KEY (message_id, source_id)
 ) STRICT;
 
-CREATE INDEX ix_message_import_import ON message_import (import_id, message_id);
+CREATE INDEX ix_message_source_source ON message_source (source_id, message_id);
+CREATE INDEX ix_message_source_run    ON message_source (first_import_id);
 
 -- Not in the spec, but present in exports: a later export of the same chat can carry different
 -- text for the same message id. §1 makes messages immutable after import, so a changed body

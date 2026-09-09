@@ -10,6 +10,7 @@ namespace Archive.Data.Tests;
 /// </remarks>
 internal static class Seed
 {
+    internal const string SourceId = "telegram:account:777001";
     internal const string ImportId = "imp-1";
     internal const string ThreadId = "thr-1";
     internal const string OtherThreadId = "thr-2";
@@ -17,8 +18,11 @@ internal static class Seed
 
     /// <summary>Creates one import, two threads and one identity.</summary>
     internal static void Basics(TempDatabase db) => db.Execute($"""
-        INSERT INTO import (id, platform, source_path, source_fingerprint, importer_version, status, started_utc)
-        VALUES ('{ImportId}', 'telegram', '/tmp/export', 'fp', 'test', 'completed', '2020-01-01T00:00:00.0000000+00:00');
+        INSERT INTO import_source (id, platform, label, created_utc)
+        VALUES ('{SourceId}', 'telegram', 'Test account', '2020-01-01T00:00:00.0000000+00:00');
+
+        INSERT INTO import (id, source_id, platform, source_path, source_fingerprint, importer_version, status, started_utc)
+        VALUES ('{ImportId}', '{SourceId}', 'telegram', '/tmp/export', 'fp', 'test', 'completed', '2020-01-01T00:00:00.0000000+00:00');
 
         INSERT INTO thread (id, platform, source_thread_id, kind, title, first_import_id, created_utc)
         VALUES ('{ThreadId}', 'telegram', '100', 'dm', 'Sam', '{ImportId}', '2020-01-01T00:00:00.0000000+00:00'),

@@ -80,11 +80,12 @@ public sealed class ImportRunnerTests
     }
 
     /// <summary>
-    /// The other half of the same story: the content did not change, but the archive does know
-    /// the export was seen twice. That is what the UI's import filter is built on.
+    /// The other half of the same story: the content did not change, but the archive knows the
+    /// export was run twice. The run is recorded; the message's membership of the source is not
+    /// re-recorded, because it did not change.
     /// </summary>
     [Fact]
-    public void A_second_import_of_the_same_export_is_still_recorded()
+    public void A_second_run_is_recorded_without_relinking_messages()
     {
         using var save = new TempSave();
 
@@ -92,10 +93,16 @@ public sealed class ImportRunnerTests
         save.ImportFixture("group-and-dm");
 
         Assert.Equal(2, save.Scalar<long>("SELECT count(*) FROM import;"));
-        Assert.Equal(2, save.Scalar<long>("SELECT count(*) FROM message_import WHERE message_id = 1;"));
 
-        // Exactly one import is recorded as having discovered each message.
-        Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM message_import WHERE message_id = 1 AND is_first = 1;"));
+        // One source, and one row per message in it — not one per message per run.
+        Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM import_source;"));
+        Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM message_source WHERE message_id = 1;"));
+        Assert.Equal(
+            save.Scalar<long>("SELECT count(*) FROM message;"),
+            save.Scalar<long>("SELECT count(*) FROM message_source;"));
+
+        // Both runs belong to the same source.
+        Assert.Equal(1, save.Scalar<long>("SELECT count(DISTINCT source_id) FROM import;"));
     }
 
     [Fact]

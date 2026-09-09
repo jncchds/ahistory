@@ -8,8 +8,8 @@ public sealed class MigrationTests
     private static readonly string[] ExpectedTables =
     [
         "derived_artifact", "fact", "fact_citation", "identity", "identity_person", "import",
-        "media", "message", "message_import", "message_media", "message_revision", "person",
-        "person_edge", "reaction", "save_meta", "schema_migration", "search_document",
+        "import_source", "media", "message", "message_media", "message_revision", "message_source",
+        "person", "person_edge", "reaction", "save_meta", "schema_migration", "search_document",
         "session", "thread", "thread_participant",
     ];
 

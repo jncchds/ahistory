@@ -29,7 +29,8 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
     public DbSet<Media> Media => Set<Media>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Message> Messages => Set<Message>();
-    public DbSet<MessageImport> MessageImports => Set<MessageImport>();
+    public DbSet<ImportSource> ImportSources => Set<ImportSource>();
+    public DbSet<MessageSource> MessageSources => Set<MessageSource>();
     public DbSet<MessageRevision> MessageRevisions => Set<MessageRevision>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
     public DbSet<MessageMedia> MessageMedia => Set<MessageMedia>();
@@ -48,11 +49,23 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.CreatedUtc).HasColumnName("created_utc");
         });
 
+        b.Entity<ImportSource>(e =>
+        {
+            e.ToTable("import_source");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Platform).HasColumnName("platform");
+            e.Property(x => x.Label).HasColumnName("label");
+            e.Property(x => x.Provenance).HasColumnName("provenance");
+            e.Property(x => x.CreatedUtc).HasColumnName("created_utc");
+        });
+
         b.Entity<Import>(e =>
         {
             e.ToTable("import");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.SourceId).HasColumnName("source_id");
             e.Property(x => x.Platform).HasColumnName("platform");
             e.Property(x => x.SourcePath).HasColumnName("source_path");
             e.Property(x => x.SourceFingerprint).HasColumnName("source_fingerprint");
@@ -178,13 +191,13 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.ImporterVersion).HasColumnName("importer_version");
         });
 
-        b.Entity<MessageImport>(e =>
+        b.Entity<MessageSource>(e =>
         {
-            e.ToTable("message_import");
-            e.HasKey(x => new { x.MessageId, x.ImportId });
+            e.ToTable("message_source");
+            e.HasKey(x => new { x.MessageId, x.SourceId });
             e.Property(x => x.MessageId).HasColumnName("message_id");
-            e.Property(x => x.ImportId).HasColumnName("import_id");
-            e.Property(x => x.IsFirst).HasColumnName("is_first");
+            e.Property(x => x.SourceId).HasColumnName("source_id");
+            e.Property(x => x.FirstImportId).HasColumnName("first_import_id");
             e.Property(x => x.SeenUtc).HasColumnName("seen_utc");
         });
 
