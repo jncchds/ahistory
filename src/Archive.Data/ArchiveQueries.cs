@@ -164,16 +164,29 @@ public sealed class ArchiveQueries(Database database)
         return identities;
     }
 
+    /// <summary>
+    /// Every conversation, with its size and most recent message.
+    /// </summary>
+    /// <remarks>
+    /// Correlated subqueries rather than a join and GROUP BY. The join reads every message row and
+    /// then groups; the subqueries are answered entirely from <c>ix_message_thread_time</c> as a
+    /// covering index, one bounded range per thread. Measured at 495k messages that is 22 ms
+    /// against 63 ms.
+    ///
+    /// Still proportional to the number of messages, because counting them is. If archives ever
+    /// grow to where 22 ms is felt, the answer is a maintained count on <c>thread</c> — but that
+    /// costs an UPDATE per message during import, which is a poor trade for a page that loads
+    /// once on navigation and off the UI thread.
+    /// </remarks>
     public IReadOnlyList<ThreadRow> Threads()
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT t.id, t.kind, t.title,
-                   count(m.id), max(m.sent_at_unix)
+                   (SELECT count(*) FROM message m WHERE m.thread_id = t.id),
+                   (SELECT max(m.sent_at_unix) FROM message m WHERE m.thread_id = t.id)
             FROM thread t
-            LEFT JOIN message m ON m.thread_id = t.id
-            GROUP BY t.id, t.kind, t.title
             ORDER BY 5 DESC NULLS LAST, t.title;
             """;
 

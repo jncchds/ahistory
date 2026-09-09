@@ -158,6 +158,48 @@ public sealed class SearchViewModelTests
         Assert.Single(page.Results);
     }
 
+    /// <summary>
+    /// The count is skipped when the results were not truncated, because a short result set has
+    /// already counted itself. Both branches have to produce the same number.
+    /// </summary>
+    [Fact]
+    public async Task The_total_is_right_whether_or_not_the_results_were_truncated()
+    {
+        using var save = new TempSave();
+
+        var messages = string.Join(",", Enumerable.Range(1, 250).Select(i => $$"""
+            { "id": {{i}}, "type": "message", "date_unixtime": "{{1_000_000 + i}}", "from_id": "user5001",
+              "text": "harbour {{i}}", "text_entities": [ { "type": "plain", "text": "harbour {{i}}" } ] }
+            """));
+
+        save.Runner.Run(save.WriteExport("many", $$"""
+            {
+              "personal_information": { "user_id": 777001, "first_name": "Kirill" },
+              "chats": { "list": [
+                { "name": "Sam", "type": "personal_chat", "id": 100, "messages": [ {{messages}} ] }
+              ] }
+            }
+            """));
+
+        var page = new SearchViewModel(save.Queries, save.Search);
+        await page.RefreshAsync();
+
+        // Truncated: the count query runs, and reports everything that matched.
+        page.Query = "harbour";
+        await page.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(200, page.Results.Count);
+        Assert.Equal(250, page.TotalMatches);
+        Assert.True(page.IsTruncated);
+
+        // Not truncated: the count is the result count, with no second pass.
+        page.Query = "\"harbour 42\"";
+        await page.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(page.Results.Count, page.TotalMatches);
+        Assert.False(page.IsTruncated);
+    }
+
     [Fact]
     public async Task Searching_an_empty_archive_reports_nothing_found()
     {

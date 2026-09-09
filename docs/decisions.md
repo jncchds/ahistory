@@ -425,3 +425,29 @@ redundant string is megabytes of nothing.
 
 The generator only produces shapes the importer already understands, so it can never surface a
 parsing trap nobody has thought of. Format compatibility still waits on a real export.
+
+---
+
+## D18 — Two follow-ups from D17's measurements
+
+**The thread list: correlated subqueries, not a join and GROUP BY.** 63 ms to 22 ms at 495k
+messages. The join reads every message row and then groups them; the subqueries are answered
+entirely from `ix_message_thread_time` as a covering index, one bounded range per thread.
+
+It is still proportional to the number of messages, because counting them is. The next step, if
+22 ms is ever felt, is a maintained count on `thread` — but that costs an UPDATE per message
+during import, which is a poor trade for a page that loads once on navigation and off the UI
+thread.
+
+**The result count is capped.** The search page ran two passes over the same matches: the search
+itself, then a full count. On a very common word that was 130 ms plus 100 ms.
+
+The first attempt — skipping the count when the results were not truncated — turned out to be
+worthless. It helps only searches that were already fast, because the expensive case is exactly
+the one where the results *are* truncated and the count is still needed. Measurements said so:
+233 ms before, 233 ms after.
+
+What works is capping it. `Count` stops at 1,000 and reports whether it was cut off, so the page
+says "1,000+ matches" rather than paying a second full pass for a number nobody reads precisely.
+Below the cap the count is exact and the page says so. **233 ms to 136 ms**, and what remains is
+the search itself — bm25 across every match plus snippets for the ones shown — which is inherent.

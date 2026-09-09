@@ -36,7 +36,7 @@
 
     <TextBlock DockPanel.Dock="Top" Classes="subtle" Margin="0,0,0,8"
                IsVisible="{Binding IsTruncated}"
-               Text="{Binding TotalMatches, StringFormat='{}{0:N0} matches — showing the best 200'}" />
+               Text="{Binding ResultSummary}" />
 
     <!-- D8: prefix expansion matches the start of words, so a stem finds more than a full
          inflected form. Someone who does not know that concludes the archive is empty. -->

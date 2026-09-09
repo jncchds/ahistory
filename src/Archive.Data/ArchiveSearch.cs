@@ -133,14 +133,22 @@ public sealed class ArchiveSearch(Database database)
         return hits;
     }
 
-    /// <summary>How many messages a query matches, ignoring the result limit.</summary>
-    public long Count(string? query, SearchFilter? filter = null, bool expandPrefixes = true)
+    /// <summary>How many messages a query matches, up to <paramref name="cap"/>.</summary>
+    /// <param name="cap">
+    /// Stop counting here. A word appearing in a large share of the archive otherwise costs a
+    /// second full pass over every match — measured at 100 ms on 495k messages — to produce a
+    /// number nobody reads precisely. "1,000+" says the same thing for a fraction of the work,
+    /// and below the cap the count is exact.
+    /// </param>
+    /// <returns>The count, and whether it is exact or was cut off at the cap.</returns>
+    public (long Count, bool IsExact) Count(
+        string? query, SearchFilter? filter = null, int cap = 1000, bool expandPrefixes = true)
     {
         var match = FtsQueryBuilder.Build(query, expandPrefixes);
 
         if (match is null)
         {
-            return 0;
+            return (0, true);
         }
 
         filter ??= new SearchFilter();
@@ -148,20 +156,27 @@ public sealed class ArchiveSearch(Database database)
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
 
+        // The LIMIT is inside, so SQLite stops matching once enough rows are found rather than
+        // counting them all and discarding the total.
         command.CommandText = """
-            SELECT count(*)
-            FROM search_fts
-            JOIN search_document sd ON sd.id = search_fts.rowid
-            JOIN message m ON m.id = sd.message_id
-            LEFT JOIN identity i ON i.id = m.sender_identity_id
-            LEFT JOIN identity_person ip ON ip.identity_id = i.id
-            WHERE search_fts MATCH $match
-              AND ($threadId IS NULL OR m.thread_id = $threadId)
-              AND ($personId IS NULL OR ip.person_id = $personId)
-              AND ($fromUnix IS NULL OR m.sent_at_unix >= $fromUnix)
-              AND ($toUnix IS NULL OR m.sent_at_unix <= $toUnix)
-              AND ($provenance IS NULL OR sd.provenance = $provenance);
+            SELECT count(*) FROM (
+                SELECT 1
+                FROM search_fts
+                JOIN search_document sd ON sd.id = search_fts.rowid
+                JOIN message m ON m.id = sd.message_id
+                LEFT JOIN identity i ON i.id = m.sender_identity_id
+                LEFT JOIN identity_person ip ON ip.identity_id = i.id
+                WHERE search_fts MATCH $match
+                  AND ($threadId IS NULL OR m.thread_id = $threadId)
+                  AND ($personId IS NULL OR ip.person_id = $personId)
+                  AND ($fromUnix IS NULL OR m.sent_at_unix >= $fromUnix)
+                  AND ($toUnix IS NULL OR m.sent_at_unix <= $toUnix)
+                  AND ($provenance IS NULL OR sd.provenance = $provenance)
+                LIMIT $cap
+            );
             """;
+
+        command.Parameters.AddWithValue("$cap", cap);
 
         command.Parameters.AddWithValue("$match", match);
         command.Parameters.AddWithValue("$threadId", (object?)filter.ThreadId ?? DBNull.Value);
@@ -170,7 +185,9 @@ public sealed class ArchiveSearch(Database database)
         command.Parameters.AddWithValue("$toUnix", (object?)filter.ToUnix ?? DBNull.Value);
         command.Parameters.AddWithValue("$provenance", (object?)filter.Provenance ?? DBNull.Value);
 
-        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        var count = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+
+        return (count, count < cap);
     }
 
     /// <summary>

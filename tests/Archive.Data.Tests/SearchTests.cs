@@ -261,7 +261,37 @@ public sealed class SearchTests
         }
 
         Assert.Equal(5, search.Search("harbour", limit: 5).Count);
-        Assert.Equal(20, search.Count("harbour"));
+
+        var (count, isExact) = search.Count("harbour");
+
+        Assert.Equal(20, count);
+        Assert.True(isExact);
+    }
+
+    /// <summary>
+    /// A word in a large share of the archive costs a full second pass to count exactly, for a
+    /// number nobody reads precisely. Past the cap it stops and says so.
+    /// </summary>
+    [Fact]
+    public void The_count_stops_at_the_cap_and_reports_that_it_did()
+    {
+        var (db, search) = Fixture();
+        using var _ = db;
+
+        for (var i = 1; i <= 50; i++)
+        {
+            Seed.Message(db, $"tg/100/{i}", $"harbour {i}");
+        }
+
+        var (capped, isExact) = search.Count("harbour", cap: 10);
+
+        Assert.Equal(10, capped);
+        Assert.False(isExact);
+
+        var (exact, wasExact) = search.Count("harbour", cap: 1000);
+
+        Assert.Equal(50, exact);
+        Assert.True(wasExact);
     }
 
     /// <summary>

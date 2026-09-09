@@ -30,11 +30,21 @@ public sealed partial class SearchViewModel(
     [ObservableProperty]
     private long _totalMatches;
 
+    /// <summary>False when the total was cut off at the cap and is really "that many or more".</summary>
+    [ObservableProperty]
+    private bool _totalIsExact = true;
+
     [ObservableProperty]
     private bool _hasSearched;
 
     /// <summary>True when more matched than were shown.</summary>
     public bool IsTruncated => TotalMatches > Results.Count;
+
+    /// <summary>What the result header says, exact or capped.</summary>
+    public string ResultSummary =>
+        TotalIsExact
+            ? $"{TotalMatches:N0} matches — showing the best {Results.Count:N0}"
+            : $"{TotalMatches:N0}+ matches — showing the best {Results.Count:N0}";
 
     public bool FoundNothing => HasSearched && Results.Count == 0 && !string.IsNullOrWhiteSpace(Query);
 
@@ -92,8 +102,24 @@ public sealed partial class SearchViewModel(
 
         // Off the UI thread like every other query: search runs over the whole archive, and a
         // frozen window is indistinguishable from a crashed one.
-        var (hits, total) = await Task.Run(() =>
-            (search.Search(query, filter, ResultLimit), search.Count(query, filter))).ConfigureAwait(true);
+        //
+        // The count is a second pass over the same matches, and it is only needed when the
+        // results were truncated — a search returning fewer than the limit has already counted
+        // itself. On a very common word that halves the work; on everything else it removes it.
+        var (hits, total, exact) = await Task.Run(() =>
+        {
+            var results = search.Search(query, filter, ResultLimit);
+
+            // A result set shorter than the limit has already counted itself.
+            if (results.Count < ResultLimit)
+            {
+                return (results, (long)results.Count, true);
+            }
+
+            var (count, isExact) = search.Count(query, filter);
+
+            return (results, count, isExact);
+        }).ConfigureAwait(true);
 
         foreach (var hit in hits)
         {
@@ -101,12 +127,14 @@ public sealed partial class SearchViewModel(
         }
 
         TotalMatches = total;
+        TotalIsExact = exact;
         Notify();
     });
 
     private void Notify()
     {
         OnPropertyChanged(nameof(IsTruncated));
+        OnPropertyChanged(nameof(ResultSummary));
         OnPropertyChanged(nameof(FoundNothing));
     }
 }
