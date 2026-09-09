@@ -1,5 +1,6 @@
 using Archive.Core;
 using Archive.Data;
+using Archive.Import;
 using Archive.Media;
 
 namespace Archive.Cli;
@@ -19,6 +20,7 @@ internal static class Commands
             {
                 "init" => Init(args),
                 "hash" => Hash(args),
+                "import" => Import(args),
                 "--help" or "-h" or "help" => Usage(),
                 _ => Unknown(args[0]),
             };
@@ -116,6 +118,67 @@ internal static class Commands
         }
     }
 
+    /// <summary>
+    /// Imports a Telegram export folder into a save.
+    /// </summary>
+    /// <remarks>
+    /// This is how the acceptance criterion is checked against a real archive: run it, run it
+    /// again, and read the second run's numbers. A clean re-import reports inserted 0 with
+    /// skipped equal to seen.
+    /// </remarks>
+    private static int Import(string[] args)
+    {
+        if (args.Length < 3)
+        {
+            Console.Error.WriteLine("usage: ahistory import <path-to-save.db> <export-folder>");
+            return 2;
+        }
+
+        var options = new ArchiveOptions { DatabasePath = args[1] };
+        options.Validate();
+
+        var database = new Database(options);
+        database.Migrate();
+
+        var mediaStore = new FileSystemMediaStore(options);
+        var runner = new ImportRunner(database, mediaStore);
+
+        var started = DateTimeOffset.UtcNow;
+        var lastReport = started;
+
+        var stats = runner.Run(args[2], progress =>
+        {
+            // Progress is throttled rather than printed per message: at import speed the console
+            // write would dominate the import.
+            var now = DateTimeOffset.UtcNow;
+
+            if ((now - lastReport).TotalMilliseconds < 250)
+            {
+                return;
+            }
+
+            lastReport = now;
+            Console.Write($"\r{progress.MessagesSeen,9:N0} messages  {Truncate(progress.CurrentChat, 32),-32}");
+        });
+
+        var elapsed = DateTimeOffset.UtcNow - started;
+        var rate = elapsed.TotalSeconds > 0 ? stats.MessagesSeen / elapsed.TotalSeconds : 0;
+
+        Console.Write('\r');
+        Console.WriteLine($"imported in {elapsed.TotalSeconds:N1}s ({rate:N0} messages/sec)");
+        Console.WriteLine($"  {stats}");
+
+        if (stats.MessagesInserted == 0 && stats.MessagesSeen > 0)
+        {
+            Console.WriteLine("  nothing new — this export was already fully imported.");
+        }
+
+        return 0;
+    }
+
+    private static string Truncate(string value, int length) =>
+        value.Length <= length ? value : value[..(length - 1)] + "…";
+
     private static int Unknown(string command)
     {
         Console.Error.WriteLine($"error: unknown command '{command}'");
@@ -131,6 +194,7 @@ internal static class Commands
             usage:
               ahistory init <path-to-save.db>   create or migrate a save
               ahistory hash <file>              show the content address a file would take
+              ahistory import <save.db> <folder> import a Telegram export folder
 
             A save is the .db file plus a media folder beside it. Both are created by `init`.
             """);

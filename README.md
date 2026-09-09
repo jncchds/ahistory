@@ -31,7 +31,7 @@ conversation view, keyword search.
 | M0 | Skeleton — solution, build settings, project graph | ✅ |
 | M1 | Storage — pragmas, migration runner, schema, EF mapping | ✅ |
 | M2 | Content-addressed media store | ✅ |
-| M3 | Telegram importer, proven idempotent | ⬜ |
+| M3 | Telegram importer, proven idempotent | ✅ |
 | M4 | Desktop shell, import UI, identity merging | ⬜ |
 | M5 | The continuous per-person conversation | ⬜ |
 | M6 | Full-text search | ⬜ |
@@ -64,7 +64,7 @@ messages they sent — with surrounding context, because an isolated group line 
 
 | Source | Status |
 |---|---|
-| Telegram (JSON export from Telegram Desktop) | In progress — M3 |
+| Telegram (JSON export from Telegram Desktop) | Working |
 | WhatsApp, Meta (Facebook/Instagram) | Planned |
 | Signal, iMessage, Discord | Under consideration — these are local databases or need third-party tooling |
 

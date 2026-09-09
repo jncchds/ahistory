@@ -1,0 +1,15 @@
+{
+  "about": "Split export, part two.",
+  "chats": {
+    "about": "Chats.",
+    "list": [
+      {
+        "name": "Sam Ruiz", "type": "personal_chat", "id": 100,
+        "messages": [
+          { "id": 2, "type": "message", "date_unixtime": "1554221600", "from": "Sam", "from_id": "user5001",
+            "text": "part two message", "text_entities": [ { "type": "plain", "text": "part two message" } ] }
+        ]
+      }
+    ]
+  }
+}
