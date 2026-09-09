@@ -90,6 +90,7 @@ internal static class Program
         services.AddSingleton<ArchiveQueries>();
         services.AddSingleton<IdentityMerger>();
         services.AddSingleton<PersonConversation>();
+        services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ImportRunner>();
         services.AddSingleton<IFolderPicker, StorageFolderPicker>();
 
@@ -98,6 +99,7 @@ internal static class Program
         services.AddSingleton<OverviewViewModel>();
         services.AddSingleton<ImportViewModel>();
         services.AddSingleton<PersonViewModel>();
+        services.AddSingleton<SearchViewModel>();
         services.AddSingleton<PeopleViewModel>();
         services.AddSingleton<ThreadsViewModel>();
         services.AddSingleton<MainWindowViewModel>();

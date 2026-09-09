@@ -15,13 +15,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OverviewViewModel overview,
         ImportViewModel import,
         PersonViewModel person,
+        SearchViewModel searchPage,
         PeopleViewModel people,
         ThreadsViewModel threads)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options;
-        Pages = [overview, import, person, people, threads];
+        Pages = [overview, import, person, searchPage, people, threads];
         _currentPage = overview;
 
         // An import changes what every other page shows, so they are told rather than left to

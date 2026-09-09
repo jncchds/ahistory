@@ -34,7 +34,7 @@ conversation view, keyword search.
 | M3 | Telegram importer, proven idempotent | ✅ |
 | M4 | Desktop shell, import UI, identity merging | ✅ |
 | M5 | The continuous per-person conversation | ✅ |
-| M6 | Full-text search | ⬜ |
+| M6 | Full-text search | ✅ |
 | M7 | Packaging for Windows, Linux and macOS | ⬜ |
 
 Later: transcription and OCR, embeddings and hybrid search, session extraction, the knowledge

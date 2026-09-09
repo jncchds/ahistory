@@ -113,6 +113,22 @@ overwhelmingly suffixal, so prefix expansion recovers most inflected matches che
 Trigram would give inflection tolerance in any position but roughly triples index size and
 cannot use `prefix`.
 
+### Correction (M6): what prefix expansion actually buys
+
+The original wording here implied prefix expansion recovers Slavic inflection. It does not, and
+the claim was too strong.
+
+Prefix expansion matches words **starting with** what was typed. A stem therefore finds every
+form built on it — `Праг` finds `Прага`, `Праге`, `Прагу`. But a full inflected form finds only
+itself: `Прага` does not match `Праге`, because they diverge at the final character. Reaching one
+inflection from another is lemmatization, which FTS5 provides for no Slavic language, and which
+trigram would not fix either — `Прага` is not a substring of `Праге`.
+
+So the tokenizer choice stands, but for a smaller reason than first written: prefix expansion
+helps someone typing part of a word, and stems work as search terms. The honest response to the
+remaining gap is to say so in the UI rather than to let a user conclude their archive is empty.
+`A_stem_reaches_every_form_built_on_it` pins the real behaviour in both directions.
+
 **Revisit when:** M7 measures prefix expansion against the real archive and finds it
 insufficient. Adding `search_fts_trigram` over the same content table is a self-contained
 migration, not a redesign.
