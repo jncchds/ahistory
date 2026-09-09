@@ -225,3 +225,34 @@ through a callback the committer invokes only when a message is new or revised.
 A re-import is therefore proportional to what actually changed, not to the size of the export —
 which, together with media no longer being re-hashed, is what makes re-running a large export
 cheap enough to do routinely.
+
+---
+
+## D13 — A save is one person's archive
+
+Every import into a save belongs to the same human. There is exactly one `is_owner` person, and a
+platform account the importer has not seen before is attached to that person rather than becoming
+a second owner — correct for someone with a personal and a work Telegram.
+
+This is a design assumption, and it is load-bearing in two places:
+
+**It is what makes "me" definite.** §7's knowledge base rests on the distinction between the
+owner and everyone else — reflected evidence, the owner's cross-thread fact merge, the diary. A
+save with two candidate owners has no coherent subject to write a diary about.
+
+**It removes a collision that would otherwise be real.** A message uid is
+`tg/<chat_id>/<message_id>`, and Telegram's chat id for a private chat is the *other* person's
+user id — relative to whoever exported it. So "Sam's chat with Alex" and "my chat with Alex" both
+carry chat id 5002. Two different people's archives in one save would collide on uid, and the
+second import would silently record the collision as an edit of the first. Confined to one
+person's accounts, chat ids are unambiguous and the collision cannot arise.
+
+The residual case is one person with two accounts on the same platform, where two private chats
+with the same third party would share an id. It is narrow, and the guard below surfaces the moment
+it could occur.
+
+**The guard.** `ImportPreview.AccountIsNewToOwner` is true when an export names an account that is
+not yet one of the owner's, and the CLI warns before importing. The importer cannot tell a second
+account of yours from someone else's archive, so it does not try — it says what it is about to do
+and points at the alternative, which is §9's answer: a third-party archive is a different object
+and belongs in its own save.

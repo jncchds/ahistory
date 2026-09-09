@@ -41,6 +41,21 @@ public sealed record ImportPreview
 
     public string? DetectedAccountName { get; init; }
 
+    /// <summary>The owner this save already has, if any.</summary>
+    public string? OwnerName { get; init; }
+
+    /// <summary>
+    /// True when the export names an account that is not yet one of the owner's.
+    /// </summary>
+    /// <remarks>
+    /// A save is one person's archive (decisions.md D13), and the importer acts on that: a new
+    /// account is attached to the existing owner, on the assumption it is another of their
+    /// accounts. That is right for a work and a personal Telegram, and wrong for someone else's
+    /// archive — and the difference is invisible to the importer, so it is surfaced here for the
+    /// user to notice before it is merged into their own identity.
+    /// </remarks>
+    public bool AccountIsNewToOwner { get; init; }
+
     /// <summary>Every source already in the save, most-populated first.</summary>
     public required IReadOnlyList<ImportSourceOption> ExistingSources { get; init; }
 

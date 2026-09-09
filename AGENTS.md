@@ -64,7 +64,14 @@ the headline acceptance criterion for the importer and is enforced by
 **P4 — Keep the app runnable at every milestone boundary.** Each milestone in the README ends
 with something demonstrable, not with a half-wired layer.
 
-**P5 — The save is portable, the app is not.** A `.db` plus its media folder must open on
+**P5 — A save is one person's archive.** Every import belongs to the same human; a
+platform account the importer has not seen before attaches to the existing owner rather than
+becoming a second one. This is what makes "me" definite for the knowledge base, and it is what
+keeps message uids unambiguous — Telegram private-chat ids are relative to whoever exported
+them, so two different people's archives in one save would collide. An archive someone gave you
+belongs in its own save (§9, decisions.md D13).
+
+**P6 — The save is portable, the app is not.** A `.db` plus its media folder must open on
 Windows, Linux and macOS. No absolute paths in the database, no assumed path separator.
 
 ---

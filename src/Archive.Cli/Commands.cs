@@ -151,6 +151,19 @@ internal static class Commands
 
         Console.WriteLine($"source   {chosenSource ?? preview.SuggestedSourceId}");
 
+        // A save is one person's archive (decisions.md D13). A previously unseen account gets
+        // attached to that person — correct for a second account of your own, wrong for someone
+        // else's archive, and the importer cannot tell the difference.
+        if (preview.AccountIsNewToOwner)
+        {
+            Console.WriteLine(
+                $"warning  this export belongs to {preview.DetectedAccountName ?? preview.DetectedAccountId}, "
+                + $"which is not yet one of {preview.OwnerName}'s accounts.");
+            Console.WriteLine(
+                "         it will be treated as another of their accounts. If this is someone "
+                + "else's archive, import it into a separate save instead.");
+        }
+
         if (chosenSource is null)
         {
             Console.WriteLine($"         {preview.SuggestionReason}");

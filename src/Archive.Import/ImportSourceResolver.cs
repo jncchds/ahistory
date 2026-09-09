@@ -61,6 +61,7 @@ public static class ImportSourceResolver
         }
 
         var suggestedExists = existing.Any(s => s.Id == suggestedId);
+        var (ownerName, ownerAccounts) = Owner(database);
 
         return new ImportPreview
         {
@@ -69,6 +70,9 @@ public static class ImportSourceResolver
             FileCount = resultFiles.Length,
             DetectedAccountId = accountId,
             DetectedAccountName = accountName,
+            OwnerName = ownerName,
+            AccountIsNewToOwner =
+                ownerName is not null && accountId is not null && !ownerAccounts.Contains(accountId),
             ExistingSources = [.. existing.Select(s => s with { IsSuggested = s.Id == suggestedId })],
             SuggestedSourceId = suggestedId,
             SuggestedSourceExists = suggestedExists,
@@ -115,6 +119,37 @@ public static class ImportSourceResolver
         }
 
         return (null, null);
+    }
+
+    /// <summary>The save's owner and the platform accounts already known to be theirs.</summary>
+    private static (string? Name, HashSet<string> Accounts) Owner(Database database)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT p.display_name, i.source_identity_id
+            FROM person p
+            LEFT JOIN identity_person ip ON ip.person_id = p.id
+            LEFT JOIN identity i ON i.id = ip.identity_id
+            WHERE p.is_owner = 1;
+            """;
+
+        string? name = null;
+        var accounts = new HashSet<string>(StringComparer.Ordinal);
+
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            name ??= reader.GetString(0);
+
+            if (!reader.IsDBNull(1))
+            {
+                accounts.Add(reader.GetString(1));
+            }
+        }
+
+        return (name, accounts);
     }
 
     private static List<ImportSourceOption> ExistingSources(Database database, string platform)

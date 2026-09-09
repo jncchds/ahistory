@@ -201,6 +201,73 @@ public sealed class ImportSourceTests
         Assert.Equal("My Telegram", save.Scalar<string>("SELECT label FROM import_source;"));
     }
 
+    /// <summary>
+    /// A save is one person's archive (decisions.md D13). A second account of theirs attaches to
+    /// the same owner rather than creating a rival one — which is right for a personal and a work
+    /// Telegram, and is exactly what would be wrong for someone else's archive.
+    /// </summary>
+    [Fact]
+    public void A_second_account_attaches_to_the_existing_owner()
+    {
+        using var save = new TempSave();
+
+        save.Import(save.WriteExport("personal", Export(777001, """
+            { "id": 1, "type": "message", "date_unixtime": "1554221523", "from_id": "user5001",
+              "text": "a", "text_entities": [ { "type": "plain", "text": "a" } ] }
+            """)));
+
+        save.Import(save.WriteExport("work", Export(888002, """
+            { "id": 9, "type": "message", "date_unixtime": "1554300000", "from_id": "user5003",
+              "text": "b", "text_entities": [ { "type": "plain", "text": "b" } ] }
+            """)));
+
+        Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM person WHERE is_owner = 1;"));
+
+        // Both accounts point at the one owner.
+        Assert.Equal(2, save.Scalar<long>("""
+            SELECT count(*) FROM identity_person
+            WHERE person_id = (SELECT id FROM person WHERE is_owner = 1);
+            """));
+    }
+
+    /// <summary>
+    /// The importer cannot tell a second account of yours from an archive someone handed you, so
+    /// it does not guess — it reports that the account is new and lets the user act.
+    /// </summary>
+    [Fact]
+    public void An_account_that_is_not_yet_the_owners_is_flagged()
+    {
+        using var save = new TempSave();
+
+        save.ImportFixture("group-and-dm");
+
+        var mine = save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+        Assert.False(mine.AccountIsNewToOwner);
+        Assert.Equal("Kirill Chekanov", mine.OwnerName);
+
+        var stranger = save.WriteExport("stranger", Export(999003, """
+            { "id": 1, "type": "message", "date_unixtime": "1554221523", "from_id": "user5001",
+              "text": "x", "text_entities": [ { "type": "plain", "text": "x" } ] }
+            """));
+
+        var preview = save.Runner.Preview(stranger);
+
+        Assert.True(preview.AccountIsNewToOwner);
+        Assert.Equal("999003", preview.DetectedAccountId);
+        Assert.Equal("Kirill Chekanov", preview.OwnerName);
+    }
+
+    [Fact]
+    public void The_first_import_into_an_empty_save_flags_nothing()
+    {
+        using var save = new TempSave();
+
+        var preview = save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+
+        Assert.False(preview.AccountIsNewToOwner);
+        Assert.Null(preview.OwnerName);
+    }
+
     private static string Export(long ownerId, string messages) => $$"""
         {
           "about": "Test export.",
