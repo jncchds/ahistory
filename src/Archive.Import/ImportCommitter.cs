@@ -226,15 +226,20 @@ public sealed class ImportCommitter : IDisposable
     /// Commits one message and everything hanging off it.
     /// </summary>
     /// <param name="message">The normalized message.</param>
-    /// <param name="storedMedia">
-    /// Content hashes for the message's attachments, aligned by index with
+    /// <param name="resolveMedia">
+    /// Produces content hashes for the message's attachments, aligned by index with
     /// <see cref="NormalizedMessage.Media"/>. Null entries mean the file was not stored — either
     /// the export omitted it, or it was referenced but absent from the folder.
+    ///
+    /// Deliberately a callback, not a list. Storing a file means reading and hashing every byte
+    /// of it, and on a re-import almost every message is already known, so resolving eagerly
+    /// would re-hash an entire media folder to discover there was nothing to do. It is invoked
+    /// only when the message is actually new or its content changed.
     /// </param>
-    public void Add(NormalizedMessage message, IReadOnlyList<StoredMedia?> storedMedia)
+    public void Add(NormalizedMessage message, Func<IReadOnlyList<StoredMedia?>> resolveMedia)
     {
         ArgumentNullException.ThrowIfNull(message);
-        ArgumentNullException.ThrowIfNull(storedMedia);
+        ArgumentNullException.ThrowIfNull(resolveMedia);
 
         Stats.MessagesSeen++;
 
@@ -247,12 +252,19 @@ public sealed class ImportCommitter : IDisposable
         if (isFirst)
         {
             Stats.MessagesInserted++;
-            InsertMedia(messageId.Id, message, storedMedia);
+            InsertMedia(messageId.Id, message, resolveMedia());
             InsertReactions(messageId.Id, message);
         }
         else
         {
             Stats.MessagesSkipped++;
+
+            // An edit can change attachments too, so a revised message pays the hashing cost.
+            // An unchanged one — the overwhelming majority on re-import — does not.
+            if (messageId.WasRevised)
+            {
+                InsertMedia(messageId.Id, message, resolveMedia());
+            }
         }
 
         Execute("""
@@ -330,7 +342,7 @@ public sealed class ImportCommitter : IDisposable
         Checkpoint();
     }
 
-    private readonly record struct InsertedMessage(long Id, bool WasInserted);
+    private readonly record struct InsertedMessage(long Id, bool WasInserted, bool WasRevised = false);
 
     private InsertedMessage InsertMessage(NormalizedMessage message, string threadId, string? senderId)
     {
@@ -444,7 +456,7 @@ public sealed class ImportCommitter : IDisposable
             ("$id", id));
 
         Stats.MessagesRevised++;
-        return new InsertedMessage(id, WasInserted: false);
+        return new InsertedMessage(id, WasInserted: false, WasRevised: true);
     }
 
     private void InsertMedia(long messageId, NormalizedMessage message, IReadOnlyList<StoredMedia?> stored)

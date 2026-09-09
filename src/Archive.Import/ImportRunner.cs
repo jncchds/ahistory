@@ -136,14 +136,21 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore)
         public void OnMessage(TelegramChatHeader chat, JsonElement message)
         {
             var normalized = TelegramNormalizer.Normalize(chat, message);
-            var stored = new List<StoredMedia?>(normalized.Media.Count);
 
-            foreach (var media in normalized.Media)
+            // Media is resolved lazily: the committer only asks when the message is genuinely
+            // new or changed. On a re-import that is almost never, which is the difference
+            // between re-hashing a whole media folder and touching none of it.
+            committer.Add(normalized, () =>
             {
-                stored.Add(Store(media));
-            }
+                var stored = new List<StoredMedia?>(normalized.Media.Count);
 
-            committer.Add(normalized, stored);
+                foreach (var media in normalized.Media)
+                {
+                    stored.Add(Store(media));
+                }
+
+                return stored;
+            });
 
             onProgress?.Invoke(new ImportProgress(
                 _currentChat, committer.Stats.MessagesSeen, committer.Stats.MessagesInserted));

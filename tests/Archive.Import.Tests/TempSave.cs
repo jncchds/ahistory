@@ -29,6 +29,8 @@ internal sealed class TempSave : IDisposable
 
     internal ImportRunner Runner => new(Database, MediaStore);
 
+    internal ImportRunner RunnerWith(IMediaStore store) => new(Database, store);
+
     internal ImportStats Import(string exportFolder) => Runner.Run(exportFolder);
 
     internal ImportStats ImportFixture(string fixture) => Import(Fixtures.Directory(fixture));

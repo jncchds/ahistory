@@ -164,3 +164,45 @@ Two things this buys beyond the filter:
 
 The alternative — inferring the set from `first_import_id` alone — cannot answer either question,
 because a message that arrived in three exports is recorded as belonging to one.
+
+---
+
+## D12 — Import concurrency: the archive stays readable throughout
+
+AGENTS.md P1 requires the archive to be usable while background work runs. For imports that
+resolves into four concrete properties, each covered by a test in `ImportConcurrencyTests`:
+
+**Readers are never blocked.** WAL gives one writer and unlimited concurrent readers. The
+importer holds a write transaction for the duration of a batch, and readers on other connections
+continue to be served from the last committed snapshot.
+`The_archive_is_readable_while_an_import_is_writing` asserts reads complete in under a second
+while a transaction is open — a blocked reader would instead wait out the 5-second
+`busy_timeout` and then fail.
+
+**Readers never see half a batch.** A batch is one transaction, so its messages appear together
+or not at all.
+
+**Batches land progressively.** With the default batch size an import becomes visible in
+instalments rather than appearing all at once at the end, so a long import fills the archive in
+front of the user.
+
+**Nothing here touches a UI thread.** `ImportRunner.Run` is synchronous and does no marshalling;
+the caller runs it on a background thread and marshals progress itself. The desktop head does
+that in M4. Progress is reported per message and must be throttled by the consumer — at import
+speed, an unthrottled UI update costs more than the import.
+
+### The cost of a re-import
+
+A re-import is cheap but not free, and the two costs are worth naming.
+
+**Media is not re-hashed.** Storing a file means reading and hashing every byte, so resolving
+attachments eagerly would mean re-hashing an entire media folder — tens of gigabytes on a real
+archive — only to discover every message was already present. Media is therefore resolved
+through a callback the committer invokes only when a message is new or revised.
+`A_re_import_does_not_touch_the_media_store` holds that line.
+
+**`message_import` is written every time.** One indexed insert per message, so a 500k-message
+re-import writes 500k rows. That is the price of being able to filter the archive by import and
+to withdraw one later (D11), and it is paid deliberately. It is bounded, batched, and does not
+block readers — but it does mean a re-import is proportional to the size of the export rather
+than to the number of new messages.
