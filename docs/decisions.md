@@ -568,3 +568,69 @@ the right response would have been to make the claim atomic instead of to descri
 can encode that machine's behaviour rather than a real guarantee. Three-OS CI is what tells the
 difference, which is the whole reason [P7](../AGENTS.md) is enforced by running the suite on all
 three rather than by intending to be portable.
+
+## D22 — The QIP reader was wrong in three places, and its own tests agreed with it
+
+0.1.0 shipped a QIP reader that could not open a single real `.qhf` file. Eleven QIP Infium
+histories were the first ones it ever met, and it rejected all eleven on the first check.
+
+Three faults, and the corrected layout is documented in full on `QipImporter`:
+
+- **Both size fields count what follows them, not what they introduce.** The header's field is 8
+  short of the file (it excludes `"QHF"`, the version byte and itself); a message block's is 6
+  short of the block. Reading the header's as the file's own length declared every real export
+  truncated, which is why nothing could be opened at all.
+- **The message type is the byte at `+0x1C`**, the third byte of field 3, whose first byte is the
+  direction. The reader classified on the int16 at `+0x06`, which is a field *id* and is 1 in every
+  block of every file — so `"service"` was unreachable and the six authorization events in the
+  corpus were filed as ordinary chat. Nothing failed; the archive was quietly wrong.
+- **The blocks are id/length/value triples**, not fixed offsets. The offsets happen to be constant
+  because every field has so far had a constant length. The reader now checks each id and length
+  marker, so a block shaped differently stops the import instead of yielding a message assembled
+  from fields that shifted underneath it.
+
+**The part worth keeping:** the reader had six tests over fixtures built in code, and they passed.
+They passed because the fixture builder was written from the same misreading as the reader — the
+same author, the same afternoon, the same wrong document. Two things agreeing proves nothing when
+one was derived from the other. The fixtures were not useless, but what they establish is narrower
+than it looked: they keep a *confirmed* format from drifting; they cannot confirm one.
+
+Both size fields being off by a constant is also the most benign possible version of this: it
+failed loudly and immediately. Had the corpus been a little different, the same class of error in
+the type field would have produced an archive that imported cleanly and was subtly wrong — which
+is the failure this project is most concerned with, and the reason the strictness stayed and grew
+rather than being relaxed to get the files in.
+
+Three tests now pin what only real files could establish: a size field counting the whole file is
+refused, authorization messages are service messages and ordinary ones are not, and a block with
+different field markers is refused. The README no longer claims Telegram is the only reader that
+has met a real archive.
+
+## D23 — A save whose schema drifted is refused when it is opened
+
+Importing into a save created a day earlier failed with `NOT NULL constraint failed:
+message_source.seen_utc` — a column the schema no longer has. It had been dropped from
+`001_core.sql` as redundant, and migrations are recorded by filename, so the edit reached every new
+save and no existing one.
+
+Editing an applied migration is the mistake; the numbered files are append-only in practice even
+though nothing enforced it. But the failure mode is what needed fixing. It arrived as a SQLite
+error about an unfamiliar column, thrown from inside an import, several frames deep — a stack
+trace that says nothing about what is actually wrong or what to do about it.
+
+`Migrate` now fingerprints the save's `sqlite_master` and compares it with a database built from
+the migrations and nothing else, refusing the save if they differ. It catches drift whatever caused
+it — an edited migration, a hand-altered table, a save from a newer build — and says so while the
+save is opening, in a sentence, naming the only thing that fixes it: import into a new save.
+
+A checksum column on `schema_migration` was the obvious alternative and is strictly worse here. It
+could only verify migrations applied *after* it was introduced, so it would have been blind to the
+save that prompted this, and it needs a schema change of its own to add.
+
+The cost is three migrations against a scratch file each time a save is opened, which does not
+register against a test suite that opens hundreds. The consequence to be aware of: the desktop head
+treats a startup failure as fatal, so a drifted save now stops the app from launching rather than
+letting it open and fail at the first import. That is the intended trade — a schema the code does
+not recognize cannot be safely *read* either, and a save that silently answers queries from tables
+that are not the ones the queries were written against is the outcome this whole file keeps
+choosing against.

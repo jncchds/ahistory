@@ -51,6 +51,33 @@ public sealed class MigrationTests
         Assert.Equal(appliedBefore, db.Scalar<long>("SELECT count(*) FROM schema_migration;"));
     }
 
+    /// <summary>
+    /// A save whose schema is not the one the migrations produce is refused when it is opened.
+    /// </summary>
+    /// <remarks>
+    /// Migrations are recorded by name, so a migration edited after it has been applied leaves
+    /// existing saves on the old schema with nothing to notice. That happened: a column was
+    /// dropped from 001_core.sql once saves already existed, and it surfaced as a NOT NULL
+    /// failure on a column the code no longer mentioned, raised from the middle of an import.
+    ///
+    /// An added column stands in for that here. Any drift moves the fingerprint, so the check
+    /// does not care which direction it went or what caused it.
+    /// </remarks>
+    [Fact]
+    public void A_save_whose_schema_drifted_is_refused_when_it_is_opened()
+    {
+        using var db = new TempDatabase();
+
+        db.Execute("ALTER TABLE message_source ADD COLUMN seen_utc TEXT;");
+
+        var error = Assert.Throws<InvalidOperationException>(() => db.Database.Migrate());
+
+        Assert.Contains("different build", error.Message, StringComparison.Ordinal);
+
+        // The message has to be enough to act on without reading the source.
+        Assert.Contains("new save", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Every_migration_file_is_recorded()
     {

@@ -102,7 +102,9 @@ public sealed class Database
     /// migration that leaves a dangling reference fails at migration time rather than at some
     /// unrelated INSERT weeks later.
     /// </remarks>
-    public void Migrate()
+    public void Migrate() => Migrate(verifySchema: true);
+
+    private void Migrate(bool verifySchema)
     {
         using var connection = new SqliteConnection(ConnectionString);
         connection.Open();
@@ -162,6 +164,77 @@ public sealed class Database
                 _log.LogError(ex, "Migration {Migration} failed and was rolled back.", name);
 
                 throw new InvalidOperationException($"Migration '{name}' failed: {ex.Message}", ex);
+            }
+        }
+
+        if (verifySchema)
+        {
+            VerifySchema();
+        }
+    }
+
+    /// <summary>
+    /// Checks that the save's schema is the one the current migrations produce.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Migrations are recorded by name, so editing one that has already been applied changes what
+    /// new saves get and leaves existing ones behind, with nothing to notice the difference. That
+    /// is not hypothetical: a column was once dropped from 001_core.sql after saves existed, and
+    /// the first sign of it was a NOT NULL failure on a column the code no longer knew about,
+    /// thrown from the middle of an import several screens deep in a stack trace.
+    /// </para>
+    /// <para>
+    /// Comparing against a database migrated from scratch catches that whatever caused it —
+    /// an edited migration, a hand-altered table, a save from a newer build — and says so while
+    /// the save is being opened, which is when it is still a sentence rather than a mystery. The
+    /// reference costs three migrations against a scratch file, once per call.
+    /// </para>
+    /// </remarks>
+    private void VerifySchema()
+    {
+        var actual = SchemaFingerprint();
+        var expected = ReferenceFingerprint();
+
+        if (actual == expected)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"The schema in '{DatabasePath}' is not the one these migrations produce "
+            + $"(schema {actual}, expected {expected}). The save was made by a different build. "
+            + "Nothing here can repair it in place: import into a new save, which is the only "
+            + "operation that rebuilds the schema from the migrations.");
+    }
+
+    /// <summary>The fingerprint of a database built from the migrations and nothing else.</summary>
+    private string ReferenceFingerprint()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ahistory-schema", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var reference = new Database(
+                new ArchiveOptions { DatabasePath = Path.Combine(directory, "reference.db") });
+
+            // Without this the reference would verify itself against another reference, forever.
+            reference.Migrate(verifySchema: false);
+
+            return reference.SchemaFingerprint();
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A scratch file in the temp directory; the OS will reclaim it.
             }
         }
     }
