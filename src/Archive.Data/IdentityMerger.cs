@@ -72,6 +72,89 @@ public sealed class IdentityMerger(Database database)
     }
 
     /// <summary>
+    /// Moves every account of one person onto another.
+    /// </summary>
+    /// <remarks>
+    /// Merging identities one at a time is the primitive; this is what someone actually wants when
+    /// they have realized that two rows in the People list are one human. Doing it as three
+    /// separate merges leaves the archive in a half-merged state between each, which is visible
+    /// on the page and wrong if the third one fails.
+    /// </remarks>
+    /// <param name="confirmOwnerMerge">
+    /// Required when the target is the owner, for the same reason as <see cref="MergeInto"/>, and
+    /// with more at stake: this moves everything that person ever said at once.
+    /// </param>
+    public void MergePeople(string sourcePersonId, string targetPersonId, bool confirmOwnerMerge = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePersonId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPersonId);
+
+        if (string.Equals(sourcePersonId, targetPersonId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+
+        var sourceIsOwner = IsOwner(connection, transaction, sourcePersonId, nameof(sourcePersonId));
+        var targetIsOwner = IsOwner(connection, transaction, targetPersonId, nameof(targetPersonId));
+
+        if (targetIsOwner && !confirmOwnerMerge)
+        {
+            throw new InvalidOperationException(
+                "Merging a person into the owner must be confirmed explicitly: it makes everything "
+                + "they ever said a statement about you.");
+        }
+
+        // The owner is the archive's subject, and a merge that dissolves them leaves it with none.
+        // Merging the other way round — the contact into you — is the operation that was meant,
+        // and it is the one that already asks first.
+        if (sourceIsOwner)
+        {
+            throw new InvalidOperationException(
+                "The archive's owner cannot be merged into someone else. Merge the other account "
+                + "into the owner instead.");
+        }
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE identity_person
+                SET person_id = $target, confidence = 'manual', linked_utc = $now
+                WHERE person_id = $source;
+                """;
+            update.Parameters.AddWithValue("$target", targetPersonId);
+            update.Parameters.AddWithValue("$source", sourcePersonId);
+            update.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+            update.ExecuteNonQuery();
+        }
+
+        RemoveEmptyPeople(connection, transaction);
+        transaction.Commit();
+    }
+
+    /// <summary>Reads a person's owner flag, refusing an id that is not one.</summary>
+    private static bool IsOwner(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        string personId,
+        string parameterName)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText = "SELECT is_owner FROM person WHERE id = $person;";
+        check.Parameters.AddWithValue("$person", personId);
+
+        var value = check.ExecuteScalar();
+
+        return value is null or DBNull
+            ? throw new InvalidOperationException($"No such person: '{personId}' ({parameterName}).")
+            : Convert.ToInt64(value) == 1;
+    }
+
+    /// <summary>
     /// Detaches an identity onto a person of its own.
     /// </summary>
     /// <remarks>

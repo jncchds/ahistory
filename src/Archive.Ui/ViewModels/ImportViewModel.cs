@@ -43,7 +43,32 @@ public sealed partial class ImportViewModel(
     [ObservableProperty]
     private ImportStats? _result;
 
+    /// <summary>
+    /// Which account on this platform is the user's, for the formats that will not say.
+    /// </summary>
+    /// <remarks>
+    /// Pre-filled with the importer's best guess and left editable. The alternative — which is
+    /// what the app used to do — is to invent an owner: your real account then arrives as an
+    /// ordinary contact, and a history file for your own account becomes a conversation between
+    /// the placeholder and you that nothing downstream can tell from a real one.
+    /// </remarks>
+    [ObservableProperty]
+    private string? _ownerAccountId;
+
     public ObservableCollection<SourceChoice> SourceChoices { get; } = [];
+
+    /// <summary>Accounts the export mentions that could be the user's.</summary>
+    public ObservableCollection<string> AccountCandidates { get; } = [];
+
+    /// <summary>Whether to ask who the user is on this platform.</summary>
+    public bool AsksForAccount => Preview?.DetectedAccountIsGuess == true;
+
+    public string AccountQuestion =>
+        Preview is null
+            ? string.Empty
+            : $"{Preview.PlatformName} archives do not say which account they belong to. "
+              + "Tell it which one is yours and your own messages are attributed to you — leave it "
+              + "blank and they go to a placeholder you can attribute later.";
 
     /// <summary>The export names an account that is not yet the owner's (P5).</summary>
     public bool ShowsAccountWarning => Preview?.AccountIsNewToOwner == true;
@@ -77,6 +102,8 @@ public sealed partial class ImportViewModel(
         Result = null;
         Preview = null;
         SourceChoices.Clear();
+        AccountCandidates.Clear();
+        OwnerAccountId = null;
 
         var folder = ExportFolder;
 
@@ -108,8 +135,21 @@ public sealed partial class ImportViewModel(
 
         SelectedSource = SourceChoices.FirstOrDefault(c => c.IsSuggested) ?? SourceChoices.FirstOrDefault();
 
+        foreach (var candidate in preview.AccountCandidates)
+        {
+            AccountCandidates.Add(candidate);
+        }
+
+        // The importer's own guess, offered rather than applied — it comes from a folder name.
+        if (preview.DetectedAccountIsGuess)
+        {
+            OwnerAccountId = preview.DetectedAccountId;
+        }
+
         OnPropertyChanged(nameof(ShowsAccountWarning));
         OnPropertyChanged(nameof(AccountWarning));
+        OnPropertyChanged(nameof(AsksForAccount));
+        OnPropertyChanged(nameof(AccountQuestion));
         OnPropertyChanged(nameof(CanImport));
     });
 
@@ -118,6 +158,7 @@ public sealed partial class ImportViewModel(
     {
         var folder = ExportFolder;
         var sourceId = SelectedSource?.Id;
+        var ownerAccount = string.IsNullOrWhiteSpace(OwnerAccountId) ? null : OwnerAccountId.Trim();
 
         if (string.IsNullOrWhiteSpace(folder))
         {
@@ -138,7 +179,8 @@ public sealed partial class ImportViewModel(
             var stats = await Task.Run(() => runner.Run(
                 folder,
                 progress => Report(progress),
-                sourceId: sourceId)).ConfigureAwait(true);
+                sourceId: sourceId,
+                ownerAccountId: ownerAccount)).ConfigureAwait(true);
 
             Result = stats;
             ProgressText = string.Empty;

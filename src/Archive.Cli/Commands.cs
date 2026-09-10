@@ -236,6 +236,10 @@ internal static class Commands
         // Auto-detection suggests; the caller decides. --source is how a scripted caller answers
         // the question the import UI will ask.
         var chosenSource = Option(args, "--source");
+
+        // Which account is yours, for the formats that never say (VK, QIP). Without it the
+        // importer uses a placeholder and says so, rather than inventing an owner.
+        var ownerAccount = Option(args, "--me");
         var preview = runner.Preview(args[2]);
 
         Console.WriteLine($"format   {preview.PlatformName} ({preview.FileCount:N0} file(s))");
@@ -246,6 +250,25 @@ internal static class Commands
         }
 
         Console.WriteLine($"source   {chosenSource ?? preview.SuggestedSourceId}");
+
+        // A format that will not name its account gets asked rather than guessed at: your own
+        // messages otherwise attach to a placeholder that lines up with nothing on any other
+        // platform, and a history file for your own account reads as a chat with yourself.
+        if (preview.DetectedAccountIsGuess && ownerAccount is null)
+        {
+            Console.WriteLine(
+                $"me       not stated by this format — pass --me <account id> to attribute your own "
+                + "messages to you.");
+
+            if (preview.AccountCandidates.Count > 0)
+            {
+                Console.WriteLine($"         candidates: {string.Join(", ", preview.AccountCandidates)}");
+            }
+        }
+        else if (ownerAccount is not null)
+        {
+            Console.WriteLine($"me       {ownerAccount}");
+        }
 
         // A save is one person's archive (decisions.md D13). A previously unseen account gets
         // attached to that person — correct for a second account of your own, wrong for someone
@@ -300,7 +323,10 @@ internal static class Commands
 
             lastReport = now;
             Console.Write($"\r{progress.MessagesSeen,9:N0} messages  {Truncate(progress.CurrentChat, 32),-32}");
-        }, sourceId: chosenSource, storeRawJson: !args.Contains("--no-raw-json"));
+        },
+        sourceId: chosenSource,
+        storeRawJson: !args.Contains("--no-raw-json"),
+        ownerAccountId: ownerAccount);
 
         var elapsed = DateTimeOffset.UtcNow - started;
         var rate = elapsed.TotalSeconds > 0 ? stats.MessagesSeen / elapsed.TotalSeconds : 0;
@@ -518,8 +544,10 @@ internal static class Commands
               ahistory init <save.db> [--upgrade] [--no-backup]
                                     create a save, or carry an older one forward
               ahistory hash <file>              show the content address a file would take
-              ahistory import <save.db> <folder> [--source <id>] [--no-raw-json]
-                                                import an export folder; the format is detected
+              ahistory import <save.db> <folder> [--source <id>] [--me <id>] [--no-raw-json]
+                                                import an export folder; the format is detected.
+                                                --me names your own account for the formats that
+                                                do not state one (VK, QIP)
               ahistory sources <save.db>        list the sources in a save
               ahistory stats <save.db>          what the archive is made of
               ahistory synth <folder> [--messages N] [--chats N]

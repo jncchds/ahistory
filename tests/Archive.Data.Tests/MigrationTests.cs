@@ -35,6 +35,7 @@ public sealed class MigrationTests
         ["002_derived.sql"] = "04a2b60b45f2f8c3c28334ec36be89e28a29114952607fcf19e6aca67fa885fb",
         ["003_search.sql"] = "753e836ac627f6f75c98f153da0512d2b81e65e762cb20357a7b5b3b2b0e4f93",
         ["004_provenance.sql"] = "fbc6a26e1d1c45908239f2592e5451b80431bd86f2c7d70894acdf62cbfe6374",
+        ["005_merge_suggestions.sql"] = "ae7b8fd74444b141f6f57fc3728fd7a01b2371696922d5e4132e18a9257f00a6",
     };
 
     /// <summary>
@@ -175,7 +176,9 @@ public sealed class MigrationTests
             DROP TABLE search_fts;
             DROP TABLE search_document;
             DROP TABLE save_provenance;
-            DELETE FROM schema_migration WHERE name IN ('003_search.sql', '004_provenance.sql');
+            DROP TABLE merge_dismissal;
+            DELETE FROM schema_migration
+            WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql');
             """);
     }
 
@@ -193,7 +196,7 @@ public sealed class MigrationTests
 
         Assert.Equal(SchemaState.Behind, status.State);
         Assert.True(status.CanUpgrade);
-        Assert.Equal(["003_search.sql", "004_provenance.sql"], status.Pending);
+        Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql"], status.Pending);
     }
 
     /// <summary>
@@ -211,7 +214,7 @@ public sealed class MigrationTests
 
         var error = Assert.Throws<SchemaUpgradeRequiredException>(() => db.Database.Migrate());
 
-        Assert.Equal(["003_search.sql", "004_provenance.sql"], error.Pending);
+        Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql"], error.Pending);
         Assert.Equal(db.Database.DatabasePath, error.SavePath);
 
         // Still behind: asking must not be the same as doing.
@@ -227,7 +230,7 @@ public sealed class MigrationTests
         var backup = db.Database.DatabasePath + ".pre-003";
         var applied = db.Database.Upgrade(backup);
 
-        Assert.Equal(["003_search.sql", "004_provenance.sql"], applied);
+        Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql"], applied);
         Assert.Equal(SchemaState.UpToDate, db.Database.Inspect().State);
 
         // The copy is a database in its own right, still standing where the save did.

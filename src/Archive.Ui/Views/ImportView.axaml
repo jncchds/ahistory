@@ -62,6 +62,34 @@
         <TextBlock TextWrapping="Wrap" Text="{Binding AccountWarning}" />
       </Border>
 
+      <!--
+        Asked rather than invented. A format that does not name its account used to get one made
+        up, which left the user's real account arriving as an ordinary contact — and a history
+        file for their own account reading as a conversation with themselves.
+      -->
+      <StackPanel Spacing="6" IsVisible="{Binding AsksForAccount}">
+        <TextBlock Text="Your account on this platform" FontWeight="SemiBold" />
+        <TextBlock Classes="subtle" TextWrapping="Wrap" Text="{Binding AccountQuestion}" />
+        <Grid ColumnDefinitions="220,10,*">
+          <TextBox Grid.Column="0" Text="{Binding OwnerAccountId}" Watermark="Leave blank if unsure" />
+          <ItemsControl Grid.Column="2" ItemsSource="{Binding AccountCandidates}"
+                        VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="6" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border Background="{DynamicResource ElevatedBrush}" CornerRadius="3" Padding="6,1">
+                  <TextBlock FontSize="11" Text="{Binding}" />
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </StackPanel>
+
       <StackPanel Orientation="Horizontal" Spacing="12">
         <Button Content="Import" Command="{Binding ImportCommand}" IsEnabled="{Binding CanImport}" />
         <ProgressBar IsIndeterminate="True" Width="140" VerticalAlignment="Center"

@@ -41,10 +41,10 @@ internal static class Seed
     /// </summary>
     internal static void People(TempDatabase db) => db.Execute($"""
         INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)
-        VALUES ('{OwnerIdentityId}', 'telegram', '777001', 'Kirill', '{ImportId}', '2020-01-01T00:00:00.0000000+00:00');
+        VALUES ('{OwnerIdentityId}', 'telegram', '777001', 'Owner Synthetic', '{ImportId}', '2020-01-01T00:00:00.0000000+00:00');
 
         INSERT INTO person (id, display_name, is_owner, created_utc)
-        VALUES ('{OwnerPersonId}', 'Kirill', 1, '2020-01-01T00:00:00.0000000+00:00'),
+        VALUES ('{OwnerPersonId}', 'Owner Synthetic', 1, '2020-01-01T00:00:00.0000000+00:00'),
                ('{SamPersonId}', 'Sam', 0, '2020-01-01T00:00:00.0000000+00:00');
 
         INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)

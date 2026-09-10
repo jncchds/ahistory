@@ -27,6 +27,16 @@ public sealed record PersonMessageRow(
     long MediaCount)
 {
     public bool IsFromGroup => Origin == "group";
+
+    /// <summary>
+    /// A name to put on the message.
+    /// </summary>
+    /// <remarks>
+    /// A message can have no sender — a service message whose actor the export did not name, or a
+    /// channel post — and a blank label above a line reads as a rendering fault rather than as the
+    /// absence it is.
+    /// </remarks>
+    public string SenderLabel => string.IsNullOrWhiteSpace(SenderName) ? "Unknown" : SenderName;
 }
 
 public sealed record PersonMessagePage(

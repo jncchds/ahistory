@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Archive.Import.Synthetic;
 using Archive.Import.Telegram;
 
 namespace Archive.Import.Tests;
@@ -9,10 +10,10 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void A_full_export_yields_the_owner_every_chat_and_every_message()
     {
-        var sink = Read("group-and-dm");
+        var sink = Read(Exports.GroupAndDm());
 
         Assert.NotNull(sink.PersonalInformation);
-        Assert.Equal("Kirill", sink.PersonalInformation!.Value.GetProperty("first_name").GetString());
+        Assert.Equal("Owner", sink.PersonalInformation!.Value.GetProperty("first_name").GetString());
 
         Assert.Equal(["Sam Ruiz", "Prague trip", "Old book club"], sink.Chats.Select(c => c.Name));
         Assert.Equal(5, sink.Messages.Count);
@@ -25,7 +26,7 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void Chats_that_were_left_are_read_and_marked()
     {
-        var sink = Read("group-and-dm");
+        var sink = Read(Exports.GroupAndDm());
 
         var left = Assert.Single(sink.Chats, c => c.IsLeft);
 
@@ -37,7 +38,7 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void Each_message_is_attributed_to_its_own_chat()
     {
-        var sink = Read("group-and-dm");
+        var sink = Read(Exports.GroupAndDm());
 
         var byChat = sink.Messages
             .GroupBy(m => m.Chat.Id)
@@ -51,7 +52,7 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void Chat_headers_carry_the_type_and_map_to_a_thread_kind()
     {
-        var sink = Read("group-and-dm");
+        var sink = Read(Exports.GroupAndDm());
 
         Assert.Equal("dm", sink.Chats.Single(c => c.Id == "100").ThreadKind);
         Assert.Equal("group", sink.Chats.Single(c => c.Id == "200").ThreadKind);
@@ -61,7 +62,7 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void A_single_chat_export_is_read_the_same_way()
     {
-        var sink = Read("single-chat");
+        var sink = Read(Exports.SingleChat());
 
         Assert.Null(sink.PersonalInformation);
 
@@ -74,7 +75,7 @@ public sealed class TelegramExportReaderTests
     [Fact]
     public void The_raw_json_of_each_message_is_preserved()
     {
-        var sink = Read("single-chat");
+        var sink = Read(Exports.SingleChat());
 
         var raw = sink.Messages[0].Raw;
 
@@ -94,9 +95,9 @@ public sealed class TelegramExportReaderTests
     [InlineData(4096)]
     public void The_result_is_identical_however_the_stream_is_chunked(int chunkSize)
     {
-        var expected = Read("group-and-dm");
+        var expected = Read(Exports.GroupAndDm());
 
-        var bytes = File.ReadAllBytes(Fixtures.ResultJson("group-and-dm"));
+        var bytes = Encoding.UTF8.GetBytes(Exports.GroupAndDm().Json());
         var sink = new RecordingSink();
         TelegramExportReader.Read(new ChunkedStream(bytes, chunkSize), sink);
 
@@ -131,10 +132,10 @@ public sealed class TelegramExportReaderTests
         Assert.Equal(big, message.Element.GetProperty("text").GetString());
     }
 
-    private static RecordingSink Read(string fixture)
+    private static RecordingSink Read(TelegramExportBuilder export)
     {
         var sink = new RecordingSink();
-        using var stream = Fixtures.OpenResultJson(fixture);
+        using var stream = Exports.Stream(export);
         TelegramExportReader.Read(stream, sink);
         return sink;
     }

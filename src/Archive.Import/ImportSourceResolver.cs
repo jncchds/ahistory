@@ -76,9 +76,18 @@ public static class ImportSourceResolver
             FormatNote = match.Detection.Note,
             DetectedAccountId = accountId,
             DetectedAccountName = accountName,
+            DetectedAccountIsGuess = match.Detection.AccountIdIsGuess,
+            AccountCandidates = match.Detection.Candidates,
             OwnerName = ownerName,
+            // Only when the export actually named the account. The warning says "this export
+            // belongs to an account that is not yet yours", which is a claim the export has to
+            // have made — a UIN read off a folder name is not evidence of anything, and raising
+            // it there would train the user to click past the case that matters (D13).
             AccountIsNewToOwner =
-                ownerName is not null && accountId is not null && !ownerAccounts.Contains(accountId),
+                ownerName is not null
+                && accountId is not null
+                && !match.Detection.AccountIdIsGuess
+                && !ownerAccounts.Contains(accountId),
             ExistingSources = [.. existing.Select(s => s with { IsSuggested = s.Id == suggestedId })],
             SuggestedSourceId = suggestedId,
             SuggestedSourceExists = suggestedExists,

@@ -68,14 +68,26 @@ public sealed partial class MessageItem(PersonMessageRow row, Func<long, Task<IR
     public bool IsOutgoing => Row.FromOwner;
 
     /// <summary>
-    /// Whether to label the bubble at all.
+    /// Whether to label the bubble with the room it was said in.
     /// </summary>
     /// <remarks>
-    /// Only group lines get a label, and it names the room rather than the speaker. In a view of
-    /// one person, every incoming message is from that same person — their name on every bubble
-    /// is a column of the same word. Where it came from is the part that varies (§4).
+    /// Only group lines get a label, and it names the <em>room</em>, not the speaker — which is
+    /// why it is not called ShowsSender any more. In a view of one person every incoming message
+    /// is from that same person, so their name on every bubble is a column of one repeated word;
+    /// where it was said is the part that varies (§4). The speaker's own name does appear in this
+    /// view, on the context rows a group line expands into, where the other voices are new.
     /// </remarks>
-    public bool ShowsSender => Row.IsFromGroup;
+    public bool ShowsThreadLabel => Row.IsFromGroup;
+
+    /// <summary>
+    /// The room this was said in, for a group line.
+    /// </summary>
+    /// <remarks>
+    /// A group can have no title, and a blank label above a bubble reads as a rendering fault
+    /// rather than as the absence it is.
+    /// </remarks>
+    public string ThreadLabel =>
+        string.IsNullOrWhiteSpace(Row.ThreadTitle) ? "a group" : Row.ThreadTitle;
 
     /// <summary>
     /// A readable time, not the stored ISO string.

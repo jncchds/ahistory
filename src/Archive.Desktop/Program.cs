@@ -129,6 +129,7 @@ internal static class Program
         services.AddSingleton<IMediaStore>(_ => new FileSystemMediaStore(options));
         services.AddSingleton<ArchiveQueries>();
         services.AddSingleton<IdentityMerger>();
+        services.AddSingleton<MergeSuggestions>();
         services.AddSingleton<PersonConversation>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ImportRunner>();

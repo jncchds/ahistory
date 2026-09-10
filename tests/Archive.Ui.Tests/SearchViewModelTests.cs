@@ -143,7 +143,7 @@ public sealed class SearchViewModelTests
 
         save.Runner.Run(save.WriteExport("later", """
             {
-              "personal_information": { "user_id": 777001, "first_name": "Kirill" },
+              "personal_information": { "user_id": 777001, "first_name": "Owner", "last_name": "Synthetic" },
               "chats": { "list": [
                 { "name": "Sam Ruiz", "type": "personal_chat", "id": 100, "messages": [
                   { "id": 9, "type": "message", "date_unixtime": "1560000000", "from_id": "user5001",
@@ -174,7 +174,7 @@ public sealed class SearchViewModelTests
 
         save.Runner.Run(save.WriteExport("many", $$"""
             {
-              "personal_information": { "user_id": 777001, "first_name": "Kirill" },
+              "personal_information": { "user_id": 777001, "first_name": "Owner", "last_name": "Synthetic" },
               "chats": { "list": [
                 { "name": "Sam", "type": "personal_chat", "id": 100, "messages": [ {{messages}} ] }
               ] }

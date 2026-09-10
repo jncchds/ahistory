@@ -8,3 +8,13 @@ obj/
 *.db-shm
 artifacts/
 publish/
+
+# Chat archives, and anything shaped like one. An export is private correspondence, and this
+# repository holds none: test exports are built in code and written to a temp folder
+# (Archive.Import.Synthetic). Enforced by NoArchiveDataInTheRepositoryTests.
+scratch/
+result.json
+Hangouts.json
+messages*.html
+*.qhf
+*.ahf

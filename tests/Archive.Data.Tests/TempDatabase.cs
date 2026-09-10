@@ -11,9 +11,10 @@ namespace Archive.Data.Tests;
 /// behaviour and the migration runner itself all behave differently — or not at all — against an
 /// in-memory database, and those are precisely the things these tests exist to check.
 ///
-/// <see cref="SqliteConnection.ClearAllPools"/> on dispose is not optional on Windows: pooled
-/// connections keep the file handle open, and the directory delete then fails with a sharing
-/// violation that looks like a flaky test.
+/// Clearing the pool on dispose is not optional on Windows: pooled connections keep the file
+/// handle open, and the directory delete then fails with a sharing violation that looks like a
+/// flaky test. It must be <see cref="SqliteConnection.ClearPool"/> and not
+/// <c>ClearAllPools</c> — see <see cref="ClearOwnPool"/>.
 /// </remarks>
 internal sealed class TempDatabase : IDisposable
 {
@@ -59,9 +60,26 @@ internal sealed class TempDatabase : IDisposable
         return value is null or DBNull ? default : (T)Convert.ChangeType(value, typeof(T));
     }
 
+    /// <summary>
+    /// Releases this database's pooled handles, and nobody else's.
+    /// </summary>
+    /// <remarks>
+    /// <c>ClearAllPools</c> is process-wide, and xUnit runs test classes in parallel in one
+    /// process. Disposing one temp database was therefore disposing the underlying
+    /// <c>sqlite3</c> handle of a connection another test was in the middle of using, which
+    /// surfaced as <see cref="ObjectDisposedException"/> from somewhere unrelated, roughly once
+    /// every few full runs — the kind of failure that gets re-run until it passes and never
+    /// diagnosed. <see cref="SqliteConnection.ClearPool"/> is scoped to one connection string.
+    /// </remarks>
+    private void ClearOwnPool()
+    {
+        using var connection = new SqliteConnection(Database.ConnectionString);
+        SqliteConnection.ClearPool(connection);
+    }
+
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        ClearOwnPool();
 
         try
         {

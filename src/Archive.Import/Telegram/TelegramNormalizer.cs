@@ -9,9 +9,9 @@ namespace Archive.Import.Telegram;
 /// Turns one raw Telegram message into a <see cref="NormalizedMessage"/>.
 /// </summary>
 /// <remarks>
-/// Every trap listed in §2 is handled here explicitly, and each has a fixture in
-/// tests/fixtures/telegram. The single most important one: the polymorphic <c>text</c> field is
-/// never read.
+/// Every trap listed in §2 is handled here explicitly, and each has an export shape built for it
+/// in <c>Archive.Import.Tests.Exports</c>. The single most important one: the polymorphic
+/// <c>text</c> field is never read.
 /// </remarks>
 public static class TelegramNormalizer
 {

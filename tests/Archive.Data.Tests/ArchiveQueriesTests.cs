@@ -24,7 +24,7 @@ public sealed class ArchiveQueriesTests
 
         Assert.Equal(2, summary.Messages);
         Assert.Equal(2, summary.Threads);
-        Assert.Equal("Kirill", summary.OwnerName);
+        Assert.Equal("Owner Synthetic", summary.OwnerName);
         Assert.Equal(1, summary.Sources);
     }
 
@@ -52,7 +52,7 @@ public sealed class ArchiveQueriesTests
 
         Assert.Equal(2, people.Count);
         Assert.True(people[0].IsOwner);
-        Assert.Equal("Kirill", people[0].DisplayName);
+        Assert.Equal("Owner Synthetic", people[0].DisplayName);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class ArchiveQueriesTests
         var identities = queries.Identities();
 
         Assert.Equal(2, identities.Count);
-        Assert.Contains(identities, i => i.PersonName == "Kirill" && i.Confidence == "seed");
+        Assert.Contains(identities, i => i.PersonName == "Owner Synthetic" && i.Confidence == "seed");
         Assert.Contains(identities, i => i.PersonName == "Sam" && i.Confidence == "auto");
     }
 

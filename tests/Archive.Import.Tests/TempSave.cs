@@ -1,5 +1,6 @@
 using Archive.Core;
 using Archive.Data;
+using Archive.Import.Synthetic;
 using Archive.Media;
 using Microsoft.Data.Sqlite;
 
@@ -33,7 +34,46 @@ internal sealed class TempSave : IDisposable
 
     internal ImportStats Import(string exportFolder) => Runner.Run(exportFolder);
 
-    internal ImportStats ImportFixture(string fixture) => Import(Fixtures.Directory(fixture));
+    /// <summary>
+    /// A named export folder belonging to this save.
+    /// </summary>
+    /// <remarks>
+    /// Named rather than randomized, and inside the save's own directory, because a folder's name
+    /// is part of the source id an export that will not identify its account falls back to
+    /// (<c>ImportSourceResolver.FolderSourceId</c>). Asking for the same name twice must therefore
+    /// give the same folder, or a test that re-imports "the same export" would be importing a
+    /// different one — while two tests still never share a folder.
+    /// </remarks>
+    internal string ExportFolder(string name)
+    {
+        var folder = Path.Combine(_directory, "exports", name);
+        Directory.CreateDirectory(folder);
+
+        return folder;
+    }
+
+    internal string Export(string name, TelegramExportBuilder export)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+
+        return export.Write(ExportFolder(name));
+    }
+
+    internal string Export(string name, HangoutsExportBuilder export)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+
+        return export.Write(ExportFolder(name));
+    }
+
+    internal string Export(string name, VkExportBuilder export)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+
+        return export.Write(ExportFolder(name));
+    }
+
+    internal ImportStats Import(string name, TelegramExportBuilder export) => Import(Export(name, export));
 
     internal string Digest() => DatabaseDigest.Of(Database);
 
@@ -96,9 +136,24 @@ internal sealed class TempSave : IDisposable
         return folder;
     }
 
+    /// <summary>
+    /// Releases this save's pooled handles, and nobody else's.
+    /// </summary>
+    /// <remarks>
+    /// Never <c>ClearAllPools</c>: it is process-wide, and xUnit runs test classes in parallel in
+    /// one process, so it disposes the <c>sqlite3</c> handle of a connection another test is in
+    /// the middle of using. That surfaced as an <see cref="ObjectDisposedException"/> from
+    /// somewhere unrelated, roughly once every few full runs.
+    /// </remarks>
+    private void ClearOwnPool()
+    {
+        using var connection = new SqliteConnection(Database.ConnectionString);
+        SqliteConnection.ClearPool(connection);
+    }
+
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        ClearOwnPool();
 
         try
         {

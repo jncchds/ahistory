@@ -691,3 +691,165 @@ that predates the table: it was made before anything recorded this, and filling 
 build happened to run the upgrade would invent the history the column exists to report. Being the
 first migration added after all of this, it also put the upgrade path through its paces on something
 real rather than on a simulation.
+
+---
+
+## D25 — A guessed owner is recorded as a guess
+
+Two importers invented an owner when the format did not state one: VK produced the fixed identity
+`vk:self` and QIP produced `qip:self`, both with `IsSynthetic: false`, and `SeedOwner` linked
+whatever it was handed with `confidence='seed'`. So a placeholder was stored exactly as an owner
+the export had named.
+
+That is wrong in three ways at once, and they compound:
+
+- **`seed` is what `Unmerge` refuses to detach**, on the grounds that the export itself said so. A
+  save whose owner was a placeholder was therefore permanently owned by an account nobody has, with
+  no way back through the UI.
+- **`is_synthetic = 0` hides it.** The People page's "identified by name only" filter reads that
+  column, and it is exactly where someone would go to correct a guess.
+- **A fixed id collapses accounts.** Two VK archives from two different accounts both became
+  `vk:self`, so one person's messages were attributed to the other.
+
+The rule now: `SeedOwner` writes `'seed'` when the identity is not synthetic and `'auto'` when it
+is, and importers mark an inferred owner synthetic. A guessed owner is still *the* owner — message
+direction depends on it — but it is detachable, visible as a guess, and scoped to the export it
+came from (`qip:folder:<name>`) rather than global.
+
+The better answer is not to guess at all, so `ImportDetection` gained `AccountIdIsGuess` and
+`AccountCandidates`, `ImportPreview` carries both, and the import page and `ahistory import --me`
+ask. What the user says is stated, not inferred.
+
+---
+
+## D26 — The phantom self-chat, and what a QIP file for your own UIN is
+
+Point QIP at a loose pile of `.qhf` files and the owner became `qip:self`, while the user's real
+UIN arrived as an ordinary contact — a `.qhf` header names only the contact. Any file whose header
+UIN was the user's own then produced a `dm` thread titled with their own nickname, with `qip:self`
+on one side and `qip:<their UIN>` on the other. A conversation with yourself, and nothing in the
+schema could tell it from a real one.
+
+**Such a file is Saved Messages.** It holds either messages sent to your own UIN (ICQ let you add
+yourself as a contact) or authorization traffic the client filed under your account — already
+classified as `service` on message types 5 and 14. Both are yours and neither is a conversation
+with another person, so both land in one `saved` thread titled "Saved messages", the same kind
+Telegram's have always used (D6). The owner identity is reused rather than a second one built for
+the same account, and the file's nickname does not overwrite the owner's display name.
+
+**Owner detection got strict.** It was "the first all-digit folder name within four levels", which
+made `backup/2009/*.qhf` an archive owned by "2009" and could just as easily pick a contact's own
+folder — attaching a real contact to you as the archive's subject, which §1 names as the merge that
+poisons everything downstream, with no confirmation step anywhere. It is now the numeric directory
+whose child is called `History`, which is the layout the README documents. More than one answer is
+refused by name rather than averaged (D13).
+
+**The invariant, stated as a test:** no import may produce a `dm` thread keyed by one of the
+owner's own accounts. Deliberately not "a `dm` whose only participant is the owner" — a
+conversation the other person never replied to is exactly that and is perfectly real. Every
+platform here keys a direct thread by the person on the other side, so a direct thread keyed by
+you is the phantom and nothing else is.
+
+---
+
+## D27 — `.ahf` is named and refused, not parsed
+
+QIP writes `.ahf` when history is archived. The reader globs `*.qhf` only, so a folder of them was
+rejected with "does not look like an export this app can read" — which sends someone looking for
+the wrong folder — and a folder mixing the two imported half of it silently.
+
+Detection now recognizes `.ahf`, `Read` refuses by name, and a mixed folder imports the `.qhf`
+files while reporting what it skipped. **No parser.** Its layout has never been confirmed against
+real files, and D22 is the record of what writing a reader from a guessed layout produces: a reader
+and its fixtures agreeing with each other while not one real file can be opened. Worth writing when
+there are real `.ahf` files to check it against.
+
+---
+
+## D28 — Participants are who was in the room, not who spoke
+
+`thread_participant` was written from observed senders alone, which answers a different question. A
+group of eleven where three people ever typed was a group of three; a direct thread you wrote into
+and got no reply from had nobody in it at all — and §4's per-person view finds a person's direct
+threads through that table, so such a thread never appeared in it. Hangouts states its roster
+outright, and it was being parsed and discarded.
+
+`NormalizedThread` gained an optional `Participants`, and the owner joins every `dm` and `saved`
+thread whether or not they said anything. Rosters are written once per thread, on its first
+message — which is also the only honest timestamp for a stated participant, since a conversation
+header carries no join times.
+
+**Telegram's `members` array was deliberately left out.** It names people without ids, so every
+group would mint a name-only identity and a person to go with it — hundreds of them across a real
+archive, which is the phantom-people problem §2 warns about arriving through a different door. Its
+groups keep sender-derived participants until there is a source of real ids.
+
+---
+
+## D29 — Suggested merges, never automatic ones
+
+The plan declined auto-merging and that stands: an under-merge is untidy and one click to fix,
+while an over-merge is a confident lie — every fact one person stated becomes a fact about another,
+and §7 has no way to tell. But finding the pairs was the user's job, and scanning a thousand
+accounts by eye is how a merge feature goes unused.
+
+`MergeSuggestions` pairs identities on a shared handle or a shared display name, ranked, and writes
+nothing. Two accounts on one platform sharing a name are *not* offered — Telegram will not let two
+accounts share a username and a display-name collision there is a coincidence — unless one of them
+is a name with no id behind it (§2), which is a guess by construction.
+
+**Today only the name match can actually fire.** `identity.handle` is populated in exactly one
+place — the Telegram owner, from `personal_information.username` — because no export here carries
+per-contact handles: Telegram messages give `from` and `from_id` and nothing else, and Hangouts, VK
+and QIP have no handle at all. So the strongest rule in the table is unreachable until a reader
+exists that supplies them. It stays because it is right when the data arrives and costs a
+comparison, but it should not be mistaken for a working signal, and the name rule is what the
+feature currently is.
+
+The ranking and its `LIMIT` are computed together, in SQL. They were not at first — the query took
+the 50 pairs with the most messages and C# re-sorted *those* by strength, which silently discards a
+strong pair that happens to be quiet. That is the wrong way round: a duplicate account somebody
+barely used is precisely the one they will never spot by eye, and volume is the tie-break, not the
+filter.
+
+What is deliberately absent is fuzzy matching — no diacritic folding, no "Sam" against "Sam Ruiz".
+Every miss is an under-merge, which the user fixes in one click; every extra rule buys recall at
+the price of the failure mode that cannot be undone by clicking.
+
+`005_merge_suggestions.sql` stores only the rejections. An accepted suggestion needs no row: the
+identities are on one person afterwards and the pair stops generating. Rows are keyed by identity
+pair rather than person pair, because people come and go as merges happen while an identity is
+permanent, and the pair is stored in a fixed order enforced by a CHECK so "A with B" and "B with A"
+cannot become two rows.
+
+`IdentityMerger.MergePeople` moves every account at once, which is what someone means when they
+have realized two rows are one human; three separate merges leave the archive half-merged between
+each. The owner can be merged *into* but never *away*: P5 says a save has exactly one owner, and
+dissolving them leaves the archive without a subject.
+
+---
+
+## D30 — No archive-shaped data in the repository
+
+`tests/fixtures` held nineteen files: a Telegram export tree with media, a Hangouts takeout, VK
+message pages. All synthetic, and the owner in them was the maintainer's own name.
+
+They are gone, and the rule is the blunt one rather than a judgement about whether a given file is
+real. A file inside the source tree that *looks* like an export is one careless copy away from
+being one: the tempting way to debug a parser is to drop the file that broke it next to the ones
+already there, and the tempting way to fix a failing test is to overwrite a small export with the
+large one that reproduces the bug. Both are a single `git add` from publishing somebody's
+correspondence — the same thing P6 refuses to let into a log, held to a lower standard because it
+was called a fixture.
+
+Export *shapes* now live in `Archive.Import.Synthetic` as builders — Telegram, Hangouts, VK and
+QIP — beside `SyntheticExport`, and for the same reason it is there: the CLI, the performance tests
+and the unit tests share one statement of what a format looks like. Tests still write real files to
+real folders, because reading an export folder is most of what an importer does; the folders are
+temporary. `NoArchiveDataInTheRepositoryTests` sweeps the tree for `result.json`, `Hangouts.json`,
+`messages*.html`, `.qhf`, `.ahf` and `.db`, and `.gitignore` covers the same patterns plus
+`scratch/`, which is where a real archive goes when one is needed for testing.
+
+What this does not change: a builder written from a misreading of a format will agree with a reader
+written from the same misreading (D22). Builders keep a confirmed format from drifting. Only a real
+export confirms one.

@@ -23,7 +23,7 @@ public sealed class MainWindowTests
         new ImportViewModel(save.Runner, new NullFolderPicker()),
         new PersonViewModel(save.Queries, save.Conversation),
         new SearchViewModel(save.Queries, save.Search),
-        new PeopleViewModel(save.Queries, save.Merger),
+        new PeopleViewModel(save.Queries, save.Merger, save.Suggestions),
         new ThreadsViewModel(save.Queries));
 
     [Fact]

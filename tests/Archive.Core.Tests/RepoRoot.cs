@@ -5,10 +5,11 @@ namespace Archive.Core.Tests;
 /// until a solution file appears.
 /// </summary>
 /// <remarks>
-/// Tests that read real repository content — the Telegram golden fixtures in
-/// <c>tests/fixtures/telegram</c>, the csproj files checked by
-/// <see cref="SolutionLayoutTests"/> — cannot rely on the working directory, which differs
-/// between `dotnet test`, an IDE runner and CI. Walking up to the .slnx is stable in all three.
+/// Tests that read real repository content — the csproj files checked by
+/// <see cref="SolutionLayoutTests"/>, the sweep in
+/// <see cref="NoArchiveDataInTheRepositoryTests"/> — cannot rely on the working directory, which
+/// differs between `dotnet test`, an IDE runner and CI. Walking up to the .slnx is stable in all
+/// three.
 /// </remarks>
 internal static class RepoRoot
 {

@@ -77,6 +77,9 @@ public sealed class QipImporter : IPlatformImporter
     /// </summary>
     private const int BlockPrefixSize = 6;
 
+    /// <summary>What a conversation with yourself is called, matching Telegram's own (D6).</summary>
+    public const string SavedMessagesTitle = "Saved messages";
+
     /// <summary>QIP predates ICQ's decline; anything outside this is a misread field.</summary>
     private static readonly DateTimeOffset Earliest = new(1996, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -87,10 +90,19 @@ public sealed class QipImporter : IPlatformImporter
     public ImportDetection Detect(string path)
     {
         var files = HistoryFiles(path);
+        var archived = ArchivedFiles(path);
 
         if (files.Length == 0)
         {
-            return ImportDetection.No;
+            // A folder of .ahf and nothing else is a QIP folder that this reader cannot read.
+            // Saying so beats "this does not look like an export this app can read", which sends
+            // someone looking for the wrong folder.
+            return archived.Length == 0
+                ? ImportDetection.No
+                : new ImportDetection(
+                    ImportConfidence.Possible,
+                    FileCount: archived.Length,
+                    Note: ArchivedNote(archived.Length));
         }
 
         // Confirm the signature rather than trusting the extension: .qhf is not a well-known
@@ -103,18 +115,36 @@ public sealed class QipImporter : IPlatformImporter
             }
         }
 
-        var owner = OwnerUin(path, files[0]);
+        var owners = OwnerUins(files);
+        var owner = owners.Count == 1 ? owners[0] : null;
+
+        var note = "The QIP format was never published; this reader follows a community reverse "
+            + "engineering of it and stops rather than guessing if a file does not match.";
+
+        if (archived.Length > 0)
+        {
+            note += " " + ArchivedNote(archived.Length);
+        }
+
+        if (owner is null)
+        {
+            note += " These files do not say which UIN is yours — a .qhf names only the contact — "
+                + "so tell the app, or your own account becomes a placeholder that will not line up "
+                + "with you on any other platform.";
+        }
 
         return new ImportDetection(
             ImportConfidence.Certain,
             AccountId: owner,
             AccountName: owner is null ? null : $"QIP {owner}",
             FileCount: files.Length,
-            Note: "The QIP format was never published; this reader follows a community reverse "
-                + "engineering of it and stops rather than guessing if a file does not match.");
+            Note: note,
+            // Always a guess: it comes from a folder name, never from the file.
+            AccountIdIsGuess: true,
+            AccountCandidates: owners);
     }
 
-    public void Read(string path, IImportSink sink)
+    public void Read(string path, IImportSink sink, ImportOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sink);
 
@@ -122,13 +152,16 @@ public sealed class QipImporter : IPlatformImporter
 
         if (files.Length == 0)
         {
-            throw new InvalidDataException($"'{path}' contains no .qhf history files.");
+            var archived = ArchivedFiles(path);
+
+            throw new InvalidDataException(
+                archived.Length > 0
+                    ? $"'{path}' contains no .qhf history files, but {archived.Length} .ahf file(s). "
+                        + ArchivedNote(archived.Length)
+                    : $"'{path}' contains no .qhf history files.");
         }
 
-        var ownerUin = OwnerUin(path, files[0]) ?? "self";
-
-        var owner = new NormalizedIdentity(
-            PlatformId, ownerUin, Handle: null, $"QIP {ownerUin}", IsSynthetic: false);
+        var owner = Owner(path, files, options?.OwnerAccountId);
 
         sink.OnOwner(owner);
 
@@ -138,15 +171,73 @@ public sealed class QipImporter : IPlatformImporter
         }
     }
 
-    private static string[] HistoryFiles(string path)
+    /// <summary>
+    /// Who "me" is, in order of how much the answer is worth trusting.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The user's own answer first, then the folder layout, then a placeholder. Only the first two
+    /// produce an identity that can ever line up with the same person arriving from another
+    /// platform, which is why the placeholder is flagged as the guess it is: the merge UI lists it
+    /// among the accounts identified by name, and it can be detached.
+    /// </para>
+    /// <para>
+    /// The placeholder is per-export rather than a single global "self". Two bare piles from two
+    /// different accounts are two different people's halves of a conversation, and collapsing them
+    /// onto one identity would attribute one account's messages to the other.
+    /// </para>
+    /// </remarks>
+    private static NormalizedIdentity Owner(string path, string[] files, string? stated)
+    {
+        if (!string.IsNullOrWhiteSpace(stated))
+        {
+            return new NormalizedIdentity(
+                PlatformId, stated, Handle: null, $"QIP {stated}", IsSynthetic: false);
+        }
+
+        var owners = OwnerUins(files);
+
+        if (owners.Count == 1)
+        {
+            return new NormalizedIdentity(
+                PlatformId, owners[0], Handle: null, $"QIP {owners[0]}", IsSynthetic: false);
+        }
+
+        if (owners.Count > 1)
+        {
+            // §9 and D13: a save is one person's archive. Two profiles under one folder is either
+            // two of your accounts or somebody else's history, and the importer cannot tell which
+            // — so it says what it found instead of picking one and attributing the rest to it.
+            throw new InvalidDataException(
+                $"'{path}' holds histories for more than one account ({string.Join(", ", owners)}). "
+                + "Import one profile folder at a time; an archive belonging to someone else "
+                + "belongs in its own save.");
+        }
+
+        var placeholder = "folder:" + new DirectoryInfo(path.TrimEnd(Path.DirectorySeparatorChar)).Name;
+
+        return new NormalizedIdentity(
+            PlatformId, placeholder, Handle: null, "QIP (account not identified)", IsSynthetic: true);
+    }
+
+    private static string ArchivedNote(int count) =>
+        $"{count} .ahf file(s) here are QIP's archived history, which this reader does not read — "
+        + "its layout has never been confirmed against real files, and guessing at one is how the "
+        + "first version of this reader was written. Un-archive them in QIP to import them.";
+
+    private static string[] HistoryFiles(string path) => FilesWithExtension(path, ".qhf");
+
+    private static string[] ArchivedFiles(string path) => FilesWithExtension(path, ".ahf");
+
+    private static string[] FilesWithExtension(string path, string extension)
     {
         if (File.Exists(path))
         {
-            return path.EndsWith(".qhf", StringComparison.OrdinalIgnoreCase) ? [path] : [];
+            return path.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? [path] : [];
         }
 
         return Directory.Exists(path)
-            ? [.. Directory.EnumerateFiles(path, "*.qhf", SearchOption.AllDirectories)
+            ? [.. Directory.EnumerateFiles(path, "*" + extension, SearchOption.AllDirectories)
                 .OrderBy(Path.GetFileName, StringComparer.Ordinal)]
             : [];
     }
@@ -161,38 +252,53 @@ public sealed class QipImporter : IPlatformImporter
     }
 
     /// <summary>
-    /// The account's own UIN, taken from the folder layout.
+    /// Every account UIN the folder layout names, best first.
     /// </summary>
     /// <remarks>
-    /// QIP stores histories under <c>&lt;profile&gt;\&lt;own UIN&gt;\History\&lt;contact&gt;.qhf</c>, and the
-    /// file itself names only the *contact*, so the numeric folder above History is the only thing
+    /// <para>
+    /// QIP stores histories under <c>&lt;profile&gt;\&lt;own UIN&gt;\History\&lt;contact&gt;.qhf</c>, and a
+    /// <c>.qhf</c> names only the *contact*, so that numeric folder is the only thing in an export
     /// that says who "me" is.
-    ///
-    /// When the layout is not recognizable — a bare pile of .qhf files — "self" stands in. Each
-    /// message keeps the direction its own block records, so the conversation still reads
-    /// correctly; what is lost is the account's real identity, which means this owner will not
-    /// merge with the same person arriving from any other import.
+    /// </para>
+    /// <para>
+    /// It is matched exactly — the numeric directory whose child is called <c>History</c> — and
+    /// not by looking for any all-digit folder name nearby. The looser version took the first
+    /// digits it met walking up four levels, so <c>backup\2009\*.qhf</c> made the owner "2009",
+    /// and a contact's own folder could be picked instead. Both attach a real contact to you as
+    /// the archive's owner, which §1 calls out as the merge that poisons everything downstream —
+    /// and it happened with no confirmation step anywhere.
+    /// </para>
+    /// <para>
+    /// More than one answer is not resolved here. It means the folder holds more than one profile,
+    /// which is a question for the user (D13), not something to average.
+    /// </para>
     /// </remarks>
-    private static string? OwnerUin(string root, string firstFile)
+    private static List<string> OwnerUins(string[] files)
     {
-        // Bounded to a few levels: the UIN sits directly above History, and someone may point at
-        // the History folder itself, at the profile above it, or at the QIP folder above that.
-        // Only folder names are read, and never more than this far up.
-        const int Levels = 4;
+        var owners = new List<string>();
 
-        var directory = new DirectoryInfo(Path.GetDirectoryName(firstFile)!);
-
-        for (var i = 0; i < Levels && directory is not null; i++)
+        foreach (var file in files)
         {
-            if (directory.Name.Length > 0 && directory.Name.All(char.IsAsciiDigit))
+            var history = new DirectoryInfo(Path.GetDirectoryName(file)!);
+
+            // Walk up to the folder literally named History; the file may sit in a subfolder of it.
+            while (history is not null && !history.Name.Equals("History", StringComparison.OrdinalIgnoreCase))
             {
-                return directory.Name;
+                history = history.Parent;
             }
 
-            directory = directory.Parent;
+            var profile = history?.Parent;
+
+            if (profile is not null &&
+                profile.Name.Length > 0 &&
+                profile.Name.All(char.IsAsciiDigit) &&
+                !owners.Contains(profile.Name, StringComparer.Ordinal))
+            {
+                owners.Add(profile.Name);
+            }
         }
 
-        return null;
+        return owners;
     }
 
     private void ReadHistory(string file, NormalizedIdentity owner, IImportSink sink)
@@ -230,12 +336,29 @@ public sealed class QipImporter : IPlatformImporter
         var nicknameLength = ReadInt16(bytes, nicknameOffset, file);
         var nickname = ReadUtf8(bytes, nicknameOffset + 2, nicknameLength, file);
 
-        var contact = new NormalizedIdentity(
-            PlatformId, uin, Handle: null,
-            string.IsNullOrWhiteSpace(nickname) ? uin : nickname, IsSynthetic: false);
+        // A file whose header UIN is the owner's own is not a conversation with anybody: it is
+        // either messages sent to yourself (ICQ let you add your own UIN as a contact) or
+        // authorization traffic the client filed under your account. Both are yours, so it becomes
+        // one 'saved' thread — the same kind Telegram's Saved Messages use (decisions.md D6) —
+        // rather than a 'dm' titled with your own nickname, which is indistinguishable in the
+        // schema from a real conversation and reads in the UI as a chat with yourself.
+        //
+        // The owner identity is reused rather than a second one built for the same account: they
+        // would collide on (platform, source_identity_id) anyway, and the survivor of that
+        // collision is whichever display name was written first.
+        var isSelf = string.Equals(uin, owner.SourceIdentityId, StringComparison.Ordinal);
+
+        var contact = isSelf
+            ? owner
+            : new NormalizedIdentity(
+                PlatformId, uin, Handle: null,
+                string.IsNullOrWhiteSpace(nickname) ? uin : nickname, IsSynthetic: false);
 
         // One file is one conversation, and QIP had no group chats worth the name.
-        var thread = new NormalizedThread(uin, "dm", contact.DisplayName);
+        var thread = isSelf
+            ? new NormalizedThread(uin, "saved", SavedMessagesTitle)
+            : new NormalizedThread(uin, "dm", contact.DisplayName);
+
         sink.OnThread(thread);
 
         var offset = nicknameOffset + 2 + nicknameLength;

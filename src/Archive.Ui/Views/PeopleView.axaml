@@ -1,94 +1,215 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:controls="clr-namespace:Archive.Ui.Controls"
              xmlns:data="clr-namespace:Archive.Data;assembly=Archive.Data"
              x:Class="Archive.Ui.Views.PeopleView"
              x:DataType="vm:PeopleViewModel">
 
-  <UserControl.Styles>
-    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
-  </UserControl.Styles>
+  <Grid ColumnDefinitions="320,*">
 
-  <DockPanel>
-
-    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="People" />
-
-    <TextBlock DockPanel.Dock="Top" Classes="subtle" TextWrapping="Wrap" Margin="0,0,0,12"
-               Text="A person is a human; an account is one profile on one platform. Attributing an account to a different person never rewrites a message, so any merge here can be undone." />
-
-    <!-- The owner-merge confirmation. §1: getting this wrong poisons the knowledge base. -->
-    <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="12" CornerRadius="4"
-            Background="#33C1442E" BorderBrush="#C1442E" BorderThickness="1"
-            IsVisible="{Binding PendingOwnerMerge, Converter={x:Static ObjectConverters.IsNotNull}}">
-      <StackPanel Spacing="10">
-        <TextBlock TextWrapping="Wrap" Text="{Binding PendingOwnerMerge}" />
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Yes, this account is me" Command="{Binding ConfirmOwnerMergeCommand}" />
-          <Button Content="Cancel" Command="{Binding CancelOwnerMergeCommand}" />
+    <!-- Who is in the archive. Same shape as the conversation list on the other pages. -->
+    <Border Grid.Column="0" Background="{DynamicResource ListBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="10" Spacing="6">
+          <TextBox Text="{Binding Search}" Watermark="Find a person or account" />
+          <ComboBox HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" />
+          <TextBlock Classes="faint" IsVisible="{Binding HasMatches}"
+                     Text="{Binding MatchCount, StringFormat='{}{0} possible match(es) to review'}" />
         </StackPanel>
-      </StackPanel>
-    </Border>
 
-    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
-               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
-               Text="{Binding Error}" />
-
-    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
-      <Button Content="Attribute account to person" Command="{Binding MergeCommand}" />
-      <Button Content="Detach account" Command="{Binding UnmergeCommand}" />
-      <CheckBox Content="Only accounts identified by name" IsChecked="{Binding ShowOnlyUncertain}"
-                VerticalAlignment="Center" Margin="12,0,0,0" />
-    </StackPanel>
-
-    <Grid ColumnDefinitions="*,16,2*">
-
-      <DockPanel Grid.Column="0">
-        <TextBlock DockPanel.Dock="Top" Text="People" FontWeight="SemiBold" Margin="0,0,0,6" />
-        <ListBox ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}">
+        <ListBox Classes="rows" ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="data:PersonRow">
-              <StackPanel Margin="0,4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding DisplayName}" />
-                  <Border Background="#33808080" CornerRadius="3" Padding="4,0"
-                          IsVisible="{Binding IsOwner}">
-                    <TextBlock Text="you" FontSize="10" VerticalAlignment="Center" />
-                  </Border>
+              <Grid ColumnDefinitions="Auto,10,*">
+                <controls:Avatar Grid.Column="0" DisplayName="{Binding DisplayName}" />
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                               FontWeight="SemiBold" FontSize="13" />
+                    <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3"
+                            Padding="4,0" IsVisible="{Binding IsOwner}">
+                      <TextBlock Text="you" FontSize="9" VerticalAlignment="Center" />
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Classes="faint">
+                    <Run Text="{Binding IdentityCount, StringFormat='{}{0} account(s)'}" />
+                    <Run Text="·" />
+                    <Run Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+                  </TextBlock>
                 </StackPanel>
-                <TextBlock Classes="subtle" FontSize="11"
-                           Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
-              </StackPanel>
+              </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
       </DockPanel>
+    </Border>
 
-      <DockPanel Grid.Column="2">
-        <TextBlock DockPanel.Dock="Top" Text="Platform accounts" FontWeight="SemiBold" Margin="0,0,0,6" />
-        <ListBox ItemsSource="{Binding Identities}" SelectedItem="{Binding SelectedIdentity}">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="data:IdentityRow">
-              <StackPanel Margin="0,4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding DisplayName}" />
-                  <!-- No platform id: matched on name alone, so it is a guess (§2). -->
-                  <Border Background="#33B8860B" CornerRadius="3" Padding="4,0"
-                          IsVisible="{Binding IsSynthetic}">
-                    <TextBlock Text="name only" FontSize="10" VerticalAlignment="Center" />
-                  </Border>
-                </StackPanel>
-                <TextBlock Classes="subtle" FontSize="11"
-                           Text="{Binding PersonName, StringFormat='attributed to {0}'}" />
-                <TextBlock Classes="subtle" FontSize="11"
-                           Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+    <!-- One person, and everything that is theirs. -->
+    <DockPanel Grid.Column="1" Background="{DynamicResource ConversationBrush}">
+
+      <!-- The owner-merge confirmation. §1: getting this wrong poisons the knowledge base. -->
+      <Border DockPanel.Dock="Top" Margin="22,14,22,0" Padding="12" CornerRadius="4"
+              Background="#33C1442E" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1"
+              IsVisible="{Binding PendingOwnerMerge, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Spacing="10">
+          <TextBlock TextWrapping="Wrap" Text="{Binding PendingOwnerMerge}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Yes, this account is me" Classes="accent"
+                    Command="{Binding ConfirmOwnerMergeCommand}" />
+            <Button Content="Cancel" Command="{Binding CancelOwnerMergeCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+                 Margin="22,14,22,0"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+
+      <TextBlock DockPanel.Dock="Top" Classes="subtle" Margin="22,20,22,0" TextWrapping="Wrap"
+                 IsVisible="{Binding !HasSelection}"
+                 Text="Nobody is selected. A person is a human; an account is one profile on one platform. Choose someone to see which accounts are theirs." />
+
+      <ScrollViewer IsVisible="{Binding HasSelection}">
+        <StackPanel Margin="22,18" Spacing="18">
+
+          <!-- Who this is, and what to call them. -->
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <controls:Avatar Width="48" Height="48"
+                             DisplayName="{Binding SelectedPerson.DisplayName}" />
+            <StackPanel VerticalAlignment="Center" Spacing="4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBox Width="240" Text="{Binding NewName}" Watermark="Name" />
+                <Button Content="Rename" Command="{Binding RenameCommand}" />
+                <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3" Padding="5,1"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding SelectedPerson.IsOwner, FallbackValue=False}">
+                  <TextBlock Text="this is you" FontSize="10" VerticalAlignment="Center" />
+                </Border>
               </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-      </DockPanel>
+              <TextBlock Classes="faint">
+                <Run Text="{Binding SelectedPerson.MessageCount, StringFormat='{}{0:N0} messages'}" />
+                <Run Text="across" />
+                <Run Text="{Binding Accounts.Count, StringFormat='{}{0} account(s)'}" />
+              </TextBlock>
+            </StackPanel>
+          </StackPanel>
 
-    </Grid>
+          <!--
+            Matches first: they are the work. Everything else on this page is available whenever
+            it is wanted, while a suggestion is only useful if it is seen.
+          -->
+          <StackPanel Spacing="8" IsVisible="{Binding Matches.Count}">
+            <TextBlock FontWeight="SemiBold" Text="Might also be this person" />
+            <TextBlock Classes="subtle" TextWrapping="Wrap"
+                       Text="Matched on names, which is a guess — nothing merges until you say so." />
 
-  </DockPanel>
+            <ItemsControl ItemsSource="{Binding Matches}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:MatchItem">
+                  <Border Margin="0,3" Padding="12,10" CornerRadius="4"
+                          Background="{DynamicResource ElevatedBrush}">
+                    <Grid ColumnDefinitions="Auto,12,*,12,Auto">
+                      <controls:Avatar Grid.Column="0" Width="34" Height="34"
+                                       DisplayName="{Binding OtherAccountName}" />
+
+                      <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding OtherPersonName}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3"
+                                  Padding="4,0">
+                            <TextBlock FontSize="9" VerticalAlignment="Center"
+                                       Text="{Binding OtherPlatform}" />
+                          </Border>
+                        </StackPanel>
+                        <TextBlock Classes="faint" TextWrapping="Wrap" Text="{Binding Reason}" />
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
+                                  VerticalAlignment="Center">
+                        <Button Content="Same person" Classes="accent"
+                                Command="{Binding AcceptCommand}" />
+                        <Button Content="Not the same" Command="{Binding RejectCommand}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!--
+            The accounts, inside the person they belong to. This is the relationship the page is
+            about, so it is drawn rather than described in a line of small print.
+          -->
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="Accounts" />
+            <TextBlock Classes="subtle" TextWrapping="Wrap"
+                       Text="Moving an account never rewrites a message, so any of this can be undone." />
+
+            <ItemsControl ItemsSource="{Binding Accounts}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AccountItem">
+                  <Border Margin="0,3" Padding="12,10" CornerRadius="4"
+                          Background="{DynamicResource ElevatedBrush}">
+                    <Grid ColumnDefinitions="Auto,12,*,12,Auto">
+                      <controls:Avatar Grid.Column="0" Width="34" Height="34"
+                                       DisplayName="{Binding Row.DisplayName}" />
+
+                      <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Row.DisplayName}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3"
+                                  Padding="4,0">
+                            <TextBlock FontSize="9" VerticalAlignment="Center"
+                                       Text="{Binding PlatformLabel}" />
+                          </Border>
+                          <!-- No platform id behind it: matched on a name alone, so it is a guess (§2). -->
+                          <Border Background="#33B8860B" CornerRadius="3" Padding="4,0"
+                                  IsVisible="{Binding Row.IsSynthetic}">
+                            <TextBlock Text="name only" FontSize="9" VerticalAlignment="Center" />
+                          </Border>
+                        </StackPanel>
+                        <TextBlock Classes="faint"
+                                   Text="{Binding Row.MessageCount, StringFormat='{}{0:N0} messages'}" />
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
+                                  VerticalAlignment="Center">
+                        <ComboBox Width="180" PlaceholderText="Move to…"
+                                  ItemsSource="{Binding MoveTargets}"
+                                  SelectedItem="{Binding MoveTarget}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="data:PersonRow">
+                              <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <!--
+                          The owner's own account came from the export itself and is what makes
+                          "me" definite (P5). Not offered rather than offered and refused.
+                        -->
+                        <Button Content="Detach" Command="{Binding DetachCommand}"
+                                IsVisible="{Binding !IsSeeded}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+        </StackPanel>
+      </ScrollViewer>
+
+    </DockPanel>
+
+  </Grid>
 
 </UserControl>
