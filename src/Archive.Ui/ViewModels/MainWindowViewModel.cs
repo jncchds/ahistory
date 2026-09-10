@@ -25,6 +25,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Pages = [overview, import, person, searchPage, people, threads];
         _currentPage = overview;
 
+        // A search result is a place in the archive, not just a line of text. Opening one moves
+        // to the conversation page and positions it on that message — which is navigation, so it
+        // belongs to the window rather than to either page. Neither page learns the other exists.
+        searchPage.OpenInConversationRequested += async (_, target) =>
+        {
+            CurrentPage = person;
+            await person.RevealAsync(target.PersonId, target.MessageId).ConfigureAwait(true);
+        };
+
         // An import changes what every other page shows, so they are told rather than left to
         // notice. Without this the overview keeps reporting the counts from before the import.
         import.Imported += async () =>

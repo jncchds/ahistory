@@ -245,4 +245,86 @@ public sealed class PersonViewModelTests
         Assert.Null(page.Error);
         Assert.False(page.HasMore);
     }
+
+    /// <summary>
+    /// Opening a search result lands in the middle of the conversation, on the message itself.
+    /// </summary>
+    /// <remarks>
+    /// The point of anchoring rather than paging backwards from the present: a hit two hundred
+    /// messages deep has to cost the same as opening the conversation does.
+    /// </remarks>
+    [Fact]
+    public async Task Opening_a_result_positions_the_stream_on_that_message()
+    {
+        var messages = Enumerable.Range(1, 250)
+            .Select(i => Message(i, 1_000_000 + i, "user5001", $"message {i}"))
+            .ToArray();
+
+        var (save, page) = await Loaded(Export(DirectThread(messages)));
+        using var _ = save;
+
+        var person = page.SelectedPerson!;
+        var target = save.Conversation.Page(person.Id, 300).Messages
+            .Single(m => m.Plaintext == "message 5");
+
+        await page.RevealAsync(person.Id, target.Id);
+
+        var revealed = Assert.Single(MessagesOf(page), m => m.IsRevealed);
+
+        Assert.Equal("message 5", revealed.Row.Plaintext);
+
+        // Everything from the start of the conversation up to it, and a page on from it: landing
+        // on a message and being unable to read what came next is the half nobody wants.
+        Assert.Equal("message 1", MessagesOf(page).First().Row.Plaintext);
+        Assert.Contains(MessagesOf(page), m => m.Row.Plaintext == "message 6");
+        Assert.True(page.HasNewer);
+        Assert.False(page.HasMore);
+    }
+
+    /// <summary>
+    /// What the view calls as the reader reaches the bottom of a stream entered from the middle.
+    /// </summary>
+    [Fact]
+    public async Task Reading_on_from_a_revealed_message_reaches_the_end()
+    {
+        var messages = Enumerable.Range(1, 250)
+            .Select(i => Message(i, 1_000_000 + i, "user5001", $"message {i}"))
+            .ToArray();
+
+        var (save, page) = await Loaded(Export(DirectThread(messages)));
+        using var _ = save;
+
+        var person = page.SelectedPerson!;
+        var target = save.Conversation.Page(person.Id, 300).Messages
+            .Single(m => m.Plaintext == "message 5");
+
+        await page.RevealAsync(person.Id, target.Id);
+
+        while (page.HasNewer)
+        {
+            await page.LoadNewerCommand.ExecuteAsync(null);
+        }
+
+        var texts = MessagesOf(page).Select(m => m.Row.Plaintext).ToArray();
+
+        Assert.Equal(250, texts.Length);
+        Assert.Equal(250, texts.Distinct().Count());
+        Assert.Equal("message 250", texts[^1]);
+    }
+
+    /// <summary>A conversation still opens at its newest end when nobody asked for a message.</summary>
+    [Fact]
+    public async Task Opening_a_conversation_normally_has_nothing_below_it()
+    {
+        var messages = Enumerable.Range(1, 250)
+            .Select(i => Message(i, 1_000_000 + i, "user5001", $"message {i}"))
+            .ToArray();
+
+        var (save, page) = await Loaded(Export(DirectThread(messages)));
+        using var _ = save;
+
+        Assert.False(page.HasNewer);
+        Assert.True(page.HasMore);
+        Assert.Equal("message 250", MessagesOf(page).Last().Row.Plaintext);
+    }
 }

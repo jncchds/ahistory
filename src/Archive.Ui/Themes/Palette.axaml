@@ -31,6 +31,20 @@
   <Color x:Key="WarningColor">#D98E4B</Color>
   <Color x:Key="DangerColor">#C8624B</Color>
 
+  <!--
+    Fluent's own accent, replaced. The theme paints focus rings, selection and its built-in accent
+    button from these, and out of the box they are whatever colour the machine's Windows accent
+    happens to be — which arrives as a scarlet button in the middle of a warm brown page, looking
+    like an error rather than the primary action. Overriding them here is what keeps one palette.
+  -->
+  <Color x:Key="SystemAccentColor">#D9A05B</Color>
+  <Color x:Key="SystemAccentColorLight1">#E1AF72</Color>
+  <Color x:Key="SystemAccentColorLight2">#E9BE8A</Color>
+  <Color x:Key="SystemAccentColorLight3">#F0CDA3</Color>
+  <Color x:Key="SystemAccentColorDark1">#B9834A</Color>
+  <Color x:Key="SystemAccentColorDark2">#8A6534</Color>
+  <Color x:Key="SystemAccentColorDark3">#5E4423</Color>
+
   <SolidColorBrush x:Key="RailBrush" Color="{StaticResource RailColor}" />
   <SolidColorBrush x:Key="ListBrush" Color="{StaticResource ListColor}" />
   <SolidColorBrush x:Key="ConversationBrush" Color="{StaticResource ConversationColor}" />

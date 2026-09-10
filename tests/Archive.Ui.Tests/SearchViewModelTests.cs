@@ -9,7 +9,7 @@ public sealed class SearchViewModelTests
         var save = new TempSave();
         save.Runner.Run(save.WriteSampleExport());
 
-        var page = new SearchViewModel(save.Queries, save.Search);
+        var page = new SearchViewModel(save.Queries, save.Search, save.Conversation);
         await page.RefreshAsync();
 
         return (save, page);
@@ -181,7 +181,7 @@ public sealed class SearchViewModelTests
             }
             """));
 
-        var page = new SearchViewModel(save.Queries, save.Search);
+        var page = new SearchViewModel(save.Queries, save.Search, save.Conversation);
         await page.RefreshAsync();
 
         // Truncated: the count query runs, and reports everything that matched.
@@ -205,7 +205,7 @@ public sealed class SearchViewModelTests
     {
         using var save = new TempSave();
 
-        var page = new SearchViewModel(save.Queries, save.Search);
+        var page = new SearchViewModel(save.Queries, save.Search, save.Conversation);
         await page.RefreshAsync();
 
         page.Query = "anything";
@@ -214,5 +214,79 @@ public sealed class SearchViewModelTests
         Assert.Empty(page.Results);
         Assert.True(page.FoundNothing);
         Assert.Null(page.Error);
+    }
+
+    /// <summary>
+    /// §4: a matched line on its own is often nonsense, so a result carries the lines either side.
+    /// </summary>
+    [Fact]
+    public async Task Selecting_a_result_shows_what_was_said_around_it()
+    {
+        var (save, page) = await Loaded();
+        using var _ = save;
+
+        page.Query = "harbour";
+        await page.RunCommand.ExecuteAsync(null);
+
+        Assert.Empty(page.Preview);
+
+        page.SelectedHit = page.Results[0];
+        await page.PendingPreview;
+
+        // Both sides of the exchange, with the matched line marked as the one that was found.
+        Assert.Equal(
+            ["the harbour was freezing", "we should go back"],
+            page.Preview.Select(r => r.Text));
+
+        var hit = Assert.Single(page.Preview, r => r.IsHit);
+
+        Assert.Equal("the harbour was freezing", hit.Text);
+    }
+
+    [Fact]
+    public async Task A_new_search_drops_the_previous_selection_and_its_preview()
+    {
+        var (save, page) = await Loaded();
+        using var _ = save;
+
+        page.Query = "harbour";
+        await page.RunCommand.ExecuteAsync(null);
+        page.SelectedHit = page.Results[0];
+        await page.PendingPreview;
+
+        Assert.NotEmpty(page.Preview);
+
+        page.Query = "zeppelin";
+        await page.RunCommand.ExecuteAsync(null);
+
+        Assert.Null(page.SelectedHit);
+        Assert.Empty(page.Preview);
+    }
+
+    /// <summary>
+    /// A result is a place in the archive. Opening one names the message and whose conversation
+    /// it is read in — which for a direct message is the other person, not the sender.
+    /// </summary>
+    [Fact]
+    public async Task Opening_a_result_asks_for_the_conversation_it_belongs_to()
+    {
+        var (save, page) = await Loaded();
+        using var _ = save;
+
+        page.Query = "harbour";
+        await page.RunCommand.ExecuteAsync(null);
+        page.SelectedHit = page.Results[0];
+        await page.PendingPreview;
+
+        ConversationTarget? asked = null;
+        page.OpenInConversationRequested += (_, target) => asked = target;
+
+        await page.OpenInConversationCommand.ExecuteAsync(null);
+
+        var sam = save.Queries.People().Single(p => !p.IsOwner);
+
+        Assert.NotNull(asked);
+        Assert.Equal(sam.Id, asked!.PersonId);
+        Assert.Equal(page.Results[0].MessageId, asked.MessageId);
     }
 }

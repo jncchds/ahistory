@@ -4,12 +4,12 @@
              x:Class="Archive.Ui.Views.ImportView"
              x:DataType="vm:ImportViewModel">
 
-  <UserControl.Styles>
-    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
-  </UserControl.Styles>
-
+  <!--
+    Margin rather than Padding: a page is laid out inside a ContentControl that fills the window
+    edge to edge, and content pressed against that edge reads as a rendering fault.
+  -->
   <ScrollViewer>
-    <StackPanel Spacing="16">
+    <StackPanel Spacing="16" Margin="24,20">
 
       <TextBlock Classes="heading" Text="Import" />
 

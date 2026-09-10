@@ -226,4 +226,148 @@ public sealed class PersonConversationTests
 
         Assert.Equal(2, conversation.Page(Seed.SamPersonId).Messages.Count);
     }
+
+    /// <summary>Twenty messages in the direct thread, a minute apart, oldest first.</summary>
+    private static PersonMessageRow Numbered(
+        TempDatabase db, PersonConversation conversation, string plaintext)
+    {
+        for (var i = 1; i <= 20; i++)
+        {
+            Seed.MessageFrom(db, $"tg/100/{i}", $"message {i}", Seed.IdentityId, 1000 + i);
+        }
+
+        return conversation.Page(Seed.SamPersonId, 100).Messages.Single(m => m.Plaintext == plaintext);
+    }
+
+    /// <summary>
+    /// Revealing a search hit anchors a page on the hit, so the hit has to be in it.
+    /// </summary>
+    /// <remarks>
+    /// An exclusive cursor loads everything up to the message that was asked for and stops one
+    /// row short of it, which looks exactly like the archive having lost it.
+    /// </remarks>
+    [Fact]
+    public void An_inclusive_page_ends_on_the_message_it_is_anchored_to()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        var tenth = Numbered(db, conversation, "message 10");
+
+        var page = conversation.Page(Seed.SamPersonId, 5, tenth.SentAtUnix, tenth.Id, inclusive: true);
+
+        Assert.Equal("message 10", page.Messages[0].Plaintext);
+        Assert.Equal("message 6", page.Messages[^1].Plaintext);
+    }
+
+    [Fact]
+    public void An_exclusive_page_starts_below_the_message_it_is_anchored_to()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        var tenth = Numbered(db, conversation, "message 10");
+
+        var page = conversation.Page(Seed.SamPersonId, 5, tenth.SentAtUnix, tenth.Id);
+
+        Assert.Equal("message 9", page.Messages[0].Plaintext);
+        Assert.DoesNotContain(page.Messages, m => m.Plaintext == "message 10");
+    }
+
+    /// <summary>
+    /// The other half of landing in the middle: what came after, in reading order.
+    /// </summary>
+    [Fact]
+    public void Reading_forwards_returns_what_came_next_oldest_first()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        var tenth = Numbered(db, conversation, "message 10");
+
+        var page = conversation.PageAfter(Seed.SamPersonId, tenth.SentAtUnix, tenth.Id, 5);
+
+        Assert.Equal(
+            ["message 11", "message 12", "message 13", "message 14", "message 15"],
+            page.Messages.Select(m => m.Plaintext));
+
+        Assert.True(page.HasMore);
+    }
+
+    [Fact]
+    public void Reading_forwards_reaches_the_end_without_repeating_anything()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        var first = Numbered(db, conversation, "message 1");
+
+        var seen = new List<string>();
+        var page = conversation.PageAfter(Seed.SamPersonId, first.SentAtUnix, first.Id, 7);
+
+        while (true)
+        {
+            seen.AddRange(page.Messages.Select(m => m.Plaintext));
+
+            if (!page.HasMore)
+            {
+                break;
+            }
+
+            page = conversation.PageAfter(
+                Seed.SamPersonId, page.NextAfterUnix!.Value, page.NextAfterId!.Value, 7);
+        }
+
+        // Nineteen: everything after the first message, each of them once.
+        Assert.Equal(19, seen.Count);
+        Assert.Equal(19, seen.Distinct().Count());
+        Assert.Equal("message 20", seen[^1]);
+    }
+
+    /// <summary>
+    /// A direct message belongs to the person at the other end of it, whichever way it went.
+    /// </summary>
+    /// <remarks>
+    /// Attributing your own line to yourself would open it in a conversation with yourself, which
+    /// is the same phantom self-chat D26 was about.
+    /// </remarks>
+    [Fact]
+    public void Your_own_direct_message_belongs_to_the_person_you_sent_it_to()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        Seed.MessageFrom(db, "tg/100/1", "mine", Seed.OwnerIdentityId, 1000);
+
+        var message = Assert.Single(conversation.Page(Seed.SamPersonId).Messages);
+
+        Assert.Equal(Seed.SamPersonId, conversation.PersonOf(message.Id));
+    }
+
+    /// <summary>A group line belongs to whoever said it — there is no other end to a room.</summary>
+    [Fact]
+    public void A_group_line_belongs_to_whoever_said_it()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        Seed.MessageFrom(db, "tg/200/1", "sam in the group", Seed.IdentityId, 2000, Seed.OtherThreadId);
+        Seed.MessageFrom(db, "tg/200/2", "me in the group", Seed.OwnerIdentityId, 2001, Seed.OtherThreadId);
+
+        var sam = Assert.Single(conversation.Page(Seed.SamPersonId).Messages);
+        var mine = Assert.Single(conversation.Page(Seed.OwnerPersonId).Messages);
+
+        Assert.Equal(Seed.SamPersonId, conversation.PersonOf(sam.Id));
+        Assert.Equal(Seed.OwnerPersonId, conversation.PersonOf(mine.Id));
+    }
+
+    [Fact]
+    public void A_message_that_is_not_there_locates_to_nothing()
+    {
+        var (db, conversation) = Fixture();
+        using var _ = db;
+
+        Assert.Null(conversation.Locate(9_999));
+        Assert.Null(conversation.PersonOf(9_999));
+    }
 }

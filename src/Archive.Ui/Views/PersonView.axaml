@@ -26,7 +26,8 @@
         left. The bubble's flattened corner points back at whoever said it.
       -->
       <Grid Margin="0,2" HorizontalAlignment="{Binding Alignment}" MaxWidth="620">
-        <Border Classes="bubble" Classes.outgoing="{Binding IsOutgoing}" Padding="12,8">
+        <Border Classes="bubble" Classes.outgoing="{Binding IsOutgoing}"
+                Classes.revealed="{Binding IsRevealed}" Padding="12,8">
           <StackPanel Spacing="3">
 
             <!-- §4: a group line out of context often reads as nonsense, so it carries the room
@@ -132,12 +133,12 @@
                  IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                  Text="{Binding Error}" />
 
-      <Button DockPanel.Dock="Top" Content="Load older" Margin="0,10,0,4"
-              HorizontalAlignment="Center"
-              IsVisible="{Binding HasMore}" Command="{Binding LoadMoreCommand}" />
+      <TextBlock DockPanel.Dock="Top" Classes="faint" HorizontalAlignment="Center"
+                 Margin="0,8,0,2" Text="loading more messages…"
+                 IsVisible="{Binding IsBusy}" />
 
       <!-- Virtualized: a conversation can run to tens of thousands of messages. -->
-      <ItemsControl ItemsSource="{Binding Items}" Margin="16,10,16,0">
+      <ItemsControl x:Name="Stream" ItemsSource="{Binding Items}" Margin="16,10,16,10">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
             <VirtualizingStackPanel />

@@ -7,10 +7,18 @@
              x:DataType="vm:SearchViewModel">
 
   <UserControl.Styles>
-    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
+    <!-- The line that was actually matched, inside the surrounding few. -->
+    <Style Selector="Border.previewRow.hit">
+      <Setter Property="Background" Value="{DynamicResource ElevatedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
   </UserControl.Styles>
 
-  <DockPanel>
+  <!--
+    Margin rather than Padding: a page is laid out inside a ContentControl that fills the window
+    edge to edge, and content pressed against that edge reads as a rendering fault.
+  -->
+  <DockPanel Margin="24,20">
 
     <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Search" />
 
@@ -34,7 +42,8 @@
       <Button Grid.Column="4" Content="Search" Command="{Binding RunCommand}" />
     </Grid>
 
-    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
+    <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+               Margin="0,0,0,12"
                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                Text="{Binding Error}" />
 
@@ -46,14 +55,66 @@
          inflected form. Someone who does not know that concludes the archive is empty. -->
     <Border DockPanel.Dock="Top" IsVisible="{Binding FoundNothing}" Margin="0,0,0,12"
             Padding="12" CornerRadius="4"
-            Background="{DynamicResource SystemControlBackgroundListLowBrush}">
+            Background="{DynamicResource ElevatedBrush}">
       <TextBlock TextWrapping="Wrap" Text="{Binding EmptyHint}" />
     </Border>
 
-    <ListBox ItemsSource="{Binding Results}">
+    <!--
+      §4: a matched line on its own is often nonsense — "yeah exactly" is the standing example —
+      so selecting a result shows the few lines around it, and offers to open it where it was
+      said. The panel is bounded so the result list stays the larger half of the page.
+    -->
+    <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,12" CornerRadius="8"
+            Background="{DynamicResource ListBrush}"
+            BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
+            IsVisible="{Binding SelectedHit, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <DockPanel>
+
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+          <StackPanel Grid.Column="0" VerticalAlignment="Center">
+            <TextBlock FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"
+                       Text="{Binding SelectedHit.ThreadTitle}" />
+            <TextBlock Classes="faint" Text="the messages either side of this result" />
+          </StackPanel>
+
+          <Button Grid.Column="1" Classes="accent" Content="Open in Conversations"
+                  VerticalAlignment="Center"
+                  Command="{Binding OpenInConversationCommand}" />
+        </Grid>
+
+        <ScrollViewer MaxHeight="240">
+          <ItemsControl ItemsSource="{Binding Preview}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:SearchPreviewRow">
+                <Border Classes="previewRow" Classes.hit="{Binding IsHit}"
+                        Margin="0,2" Padding="9,6" CornerRadius="6"
+                        BorderThickness="2,0,0,0" BorderBrush="Transparent">
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock FontSize="11" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource AccentBrush}"
+                                 Text="{Binding SenderLabel}" />
+                      <TextBlock Classes="faint" Text="{Binding Timestamp}" />
+                    </StackPanel>
+                    <!-- Capped: one very long message in the surrounding few would push the
+                         matched line off the bottom of the panel, which is the one line the
+                         reader opened this to see. -->
+                    <TextBlock FontSize="12" TextWrapping="Wrap" MaxLines="3"
+                               TextTrimming="CharacterEllipsis" Text="{Binding Text}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+      </DockPanel>
+    </Border>
+
+    <ListBox Classes="rows" ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedHit}">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="data:SearchHit">
-          <StackPanel Margin="0,6" Spacing="2">
+          <StackPanel Margin="0,4" Spacing="2">
 
             <StackPanel Orientation="Horizontal" Spacing="8">
               <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding SenderName}" />

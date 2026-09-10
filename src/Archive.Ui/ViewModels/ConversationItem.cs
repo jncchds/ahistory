@@ -99,6 +99,16 @@ public sealed partial class MessageItem(PersonMessageRow row, Func<long, Task<IR
     public string Timestamp =>
         DateTimeOffset.FromUnixTimeSeconds(Row.SentAtUnix).LocalDateTime.ToString("d MMM yyyy, HH:mm");
 
+    /// <summary>
+    /// True for the one message a search result was opened on.
+    /// </summary>
+    /// <remarks>
+    /// Arriving in the middle of a conversation puts a hundred messages on screen, and without a
+    /// mark the one that was searched for is indistinguishable from the ninety-nine around it.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isRevealed;
+
     [ObservableProperty]
     private bool _isExpanded;
 

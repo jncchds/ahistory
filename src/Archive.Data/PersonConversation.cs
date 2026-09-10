@@ -48,6 +48,26 @@ public sealed record PersonMessagePage(
 }
 
 /// <summary>
+/// A page read forwards in time: the messages after a cursor, oldest first.
+/// </summary>
+/// <remarks>
+/// The backwards page is what opening a conversation needs; this is what arriving in the middle
+/// of one needs. Jumping to a search hit from 2014 has to be able to read on from it, and paging
+/// backwards from the present until that message turns up would run thousands of queries to show
+/// one line.
+/// </remarks>
+public sealed record PersonMessageNewerPage(
+    IReadOnlyList<PersonMessageRow> Messages,
+    long? NextAfterUnix,
+    long? NextAfterId)
+{
+    public bool HasMore => NextAfterUnix is not null;
+}
+
+/// <summary>Where a message sits in the ordering every page is keyed against.</summary>
+public sealed record MessageAnchor(long Id, long SentAtUnix);
+
+/// <summary>
 /// The per-person continuous conversation (§4).
 /// </summary>
 /// <remarks>
@@ -83,7 +103,17 @@ public sealed class PersonConversation(Database database)
     /// page size rather than by the size of the archive.
     /// </para>
     /// </remarks>
-    public PersonMessagePage Page(string personId, int limit = 100, long? beforeUnix = null, long? beforeId = null)
+    /// <param name="inclusive">
+    /// Whether the cursor message itself belongs in the page. Revealing a search hit anchors a
+    /// page on the hit, and an exclusive cursor would load everything up to it while leaving the
+    /// one message that was asked for just off the end.
+    /// </param>
+    public PersonMessagePage Page(
+        string personId,
+        int limit = 100,
+        long? beforeUnix = null,
+        long? beforeId = null,
+        bool inclusive = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(personId);
 
@@ -97,8 +127,111 @@ public sealed class PersonConversation(Database database)
         }
 
         var directThreads = DirectThreadsOf(connection, identities);
-        var (sql, parameters) = BuildQuery(identities, directThreads, beforeUnix, beforeId);
+        var (sql, parameters) = BuildQuery(
+            identities, directThreads, beforeUnix, beforeId, newer: false, inclusive: inclusive);
 
+        var messages = Run(connection, sql, parameters, limit);
+        var last = messages.Count == limit ? messages[^1] : null;
+
+        return new PersonMessagePage(messages, last?.SentAtUnix, last?.Id);
+    }
+
+    /// <summary>
+    /// A page of the same conversation read forwards from a cursor, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// The mirror of <see cref="Page"/>, and the other half of being able to land in the middle
+    /// of a ten-year conversation: without it, arriving at a message from 2014 shows everything
+    /// before it and nothing after it, which is the half nobody wants.
+    /// </remarks>
+    public PersonMessageNewerPage PageAfter(string personId, long afterUnix, long afterId, int limit = 100)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(personId);
+
+        using var connection = _database.Open();
+
+        var identities = IdentitiesOf(connection, personId);
+
+        if (identities.Count == 0)
+        {
+            return new PersonMessageNewerPage([], null, null);
+        }
+
+        var directThreads = DirectThreadsOf(connection, identities);
+        var (sql, parameters) = BuildQuery(
+            identities, directThreads, afterUnix, afterId, newer: true, inclusive: false);
+
+        var messages = Run(connection, sql, parameters, limit);
+        var last = messages.Count == limit ? messages[^1] : null;
+
+        return new PersonMessageNewerPage(messages, last?.SentAtUnix, last?.Id);
+    }
+
+    /// <summary>
+    /// Where a message sits in time, or null if it is not in this archive.
+    /// </summary>
+    /// <remarks>
+    /// A search hit carries an id; paging is keyed on (time, id). This is the lookup that turns
+    /// the first into the second, so that revealing a hit costs two bounded index scans rather
+    /// than a walk backwards through everything more recent than it.
+    /// </remarks>
+    public MessageAnchor? Locate(long messageId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, sent_at_unix FROM message WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", messageId);
+
+        using var reader = command.ExecuteReader();
+
+        return reader.Read() ? new MessageAnchor(reader.GetInt64(0), reader.GetInt64(1)) : null;
+    }
+
+    /// <summary>
+    /// Whose continuous conversation a message belongs in.
+    /// </summary>
+    /// <remarks>
+    /// Not simply its sender. A direct message belongs to the person at the other end of the
+    /// thread whichever way it went — your own "we should go back" is read in their conversation,
+    /// not in one with yourself — while a group line belongs to whoever said it (§4). Null when
+    /// nothing has been attributed yet, which is a normal state rather than a fault.
+    /// </remarks>
+    public string? PersonOf(long messageId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT ifnull(
+                (SELECT ip.person_id
+                 FROM thread_participant tp
+                 JOIN identity_person ip ON ip.identity_id = tp.identity_id
+                 JOIN person p ON p.id = ip.person_id
+                 WHERE tp.thread_id = m.thread_id
+                   AND t.kind IN ('dm', 'saved')
+                   AND p.is_owner = 0
+                 LIMIT 1),
+                -- A group line, a channel post, or a direct thread whose other side has not been
+                -- attributed: fall back to whoever sent it.
+                (SELECT ip2.person_id
+                 FROM identity_person ip2
+                 WHERE ip2.identity_id = m.sender_identity_id))
+            FROM message m
+            LEFT JOIN thread t ON t.id = m.thread_id
+            WHERE m.id = $id;
+            """;
+
+        command.Parameters.AddWithValue("$id", messageId);
+
+        using var reader = command.ExecuteReader();
+
+        return reader.Read() && !reader.IsDBNull(0) ? reader.GetString(0) : null;
+    }
+
+    /// <summary>Runs an assembled page query and reads its rows.</summary>
+    private static List<PersonMessageRow> Run(
+        SqliteConnection connection, string sql, List<(string Name, object Value)> parameters, int limit)
+    {
         using var command = connection.CreateCommand();
         command.CommandText = sql;
 
@@ -109,8 +242,15 @@ public sealed class PersonConversation(Database database)
 
         command.Parameters.AddWithValue("$limit", limit);
 
-        var messages = new List<PersonMessageRow>();
         using var reader = command.ExecuteReader();
+
+        return ReadRows(reader);
+    }
+
+    /// <summary>Reads the columns <see cref="Projection"/> selects, in its order.</summary>
+    private static List<PersonMessageRow> ReadRows(SqliteDataReader reader)
+    {
+        var messages = new List<PersonMessageRow>();
 
         while (reader.Read())
         {
@@ -131,9 +271,7 @@ public sealed class PersonConversation(Database database)
                 reader.GetInt64(13)));
         }
 
-        var last = messages.Count == limit ? messages[^1] : null;
-
-        return new PersonMessagePage(messages, last?.SentAtUnix, last?.Id);
+        return messages;
     }
 
     /// <summary>
@@ -150,7 +288,8 @@ public sealed class PersonConversation(Database database)
 
         var identities = IdentitiesOf(connection, personId);
         var directThreads = DirectThreadsOf(connection, identities);
-        var (sql, parameters) = BuildQuery(identities, directThreads, null, null);
+        var (sql, parameters) = BuildQuery(
+            identities, directThreads, null, null, newer: false, inclusive: false);
 
         using var command = connection.CreateCommand();
         command.CommandText = "EXPLAIN QUERY PLAN " + sql;
@@ -219,24 +358,9 @@ public sealed class PersonConversation(Database database)
         command.Parameters.AddWithValue("$id", messageId);
         command.Parameters.AddWithValue("$radius", radius);
 
-        var messages = new List<PersonMessageRow>();
         using var reader = command.ExecuteReader();
 
-        while (reader.Read())
-        {
-            messages.Add(new PersonMessageRow(
-                reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3),
-                reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.GetInt64(6) == 1, reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8),
-                reader.GetString(9), reader.GetInt64(10), reader.GetString(11),
-                reader.IsDBNull(12) ? null : reader.GetString(12),
-                reader.GetInt64(13)));
-        }
-
-        return messages;
+        return ReadRows(reader);
     }
 
     /// <summary>The SQL that turns message ids into displayable rows.</summary>
@@ -264,20 +388,39 @@ public sealed class PersonConversation(Database database)
     private static (string Sql, List<(string Name, object Value)> Parameters) BuildQuery(
         IReadOnlyList<string> identities,
         IReadOnlyList<string> directThreads,
-        long? beforeUnix,
-        long? beforeId)
+        long? cursorUnix,
+        long? cursorId,
+        bool newer,
+        bool inclusive)
     {
         var parameters = new List<(string, object)>();
         var arms = new List<string>();
 
-        var keyset = beforeUnix is null
-            ? string.Empty
-            : " AND (m.sent_at_unix < $beforeUnix OR (m.sent_at_unix = $beforeUnix AND m.id < $beforeId))";
+        // Reading forwards is the same query with every comparison and every sort reversed. The
+        // sort has to be reversed inside each arm as well as outside it: an arm ordered the wrong
+        // way is bounded by LIMIT at the wrong end and quietly returns the wrong hundred rows.
+        var order = newer ? "ASC" : "DESC";
+        var beyond = newer ? ">" : "<";
 
-        if (beforeUnix is not null)
+        // The tie-break on equal timestamps is where inclusive lives: a whole second can hold
+        // several messages, so it is the id comparison that decides whether the cursor's own row
+        // is in the page or just outside it.
+        var tie = (newer, inclusive) switch
         {
-            parameters.Add(("$beforeUnix", beforeUnix.Value));
-            parameters.Add(("$beforeId", beforeId ?? long.MaxValue));
+            (false, false) => "<",
+            (false, true) => "<=",
+            (true, false) => ">",
+            (true, true) => ">=",
+        };
+
+        var keyset = cursorUnix is null
+            ? string.Empty
+            : $" AND (m.sent_at_unix {beyond} $cursorUnix OR (m.sent_at_unix = $cursorUnix AND m.id {tie} $cursorId))";
+
+        if (cursorUnix is not null)
+        {
+            parameters.Add(("$cursorUnix", cursorUnix.Value));
+            parameters.Add(("$cursorId", cursorId ?? (newer ? long.MinValue : long.MaxValue)));
         }
 
         // Direct threads: everything in them, both sides of the conversation.
@@ -293,7 +436,7 @@ public sealed class PersonConversation(Database database)
                     SELECT m.id, m.sent_at_unix, 'dm' AS origin
                     FROM message m
                     WHERE m.thread_id = {name}{keyset}
-                    ORDER BY m.sent_at_unix DESC, m.id DESC
+                    ORDER BY m.sent_at_unix {order}, m.id {order}
                     LIMIT $limit
                 )
                 """);
@@ -315,7 +458,7 @@ public sealed class PersonConversation(Database database)
                     SELECT m.id, m.sent_at_unix, 'group' AS origin
                     FROM message m
                     WHERE m.sender_identity_id = {name}{excluded}{keyset}
-                    ORDER BY m.sent_at_unix DESC, m.id DESC
+                    ORDER BY m.sent_at_unix {order}, m.id {order}
                     LIMIT $limit
                 )
                 """);
@@ -329,7 +472,7 @@ public sealed class PersonConversation(Database database)
             .AppendLine(")")
             .AppendLine(Projection("x.origin"))
             .AppendLine("JOIN merged x ON x.id = m.id")
-            .AppendLine("ORDER BY m.sent_at_unix DESC, m.id DESC")
+            .AppendLine($"ORDER BY m.sent_at_unix {order}, m.id {order}")
             .AppendLine("LIMIT $limit;")
             .ToString();
 

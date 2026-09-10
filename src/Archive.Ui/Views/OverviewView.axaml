@@ -4,11 +4,11 @@
              x:Class="Archive.Ui.Views.OverviewView"
              x:DataType="vm:OverviewViewModel">
 
-  <UserControl.Styles>
-    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
-  </UserControl.Styles>
-
-  <DockPanel>
+  <!--
+    Margin rather than Padding: a page is laid out inside a ContentControl that fills the window
+    edge to edge, and content pressed against that edge reads as a rendering fault.
+  -->
+  <DockPanel Margin="24,20">
     <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Overview" />
 
     <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap"

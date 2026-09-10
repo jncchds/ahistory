@@ -9,11 +9,45 @@ namespace Archive.Ui.ViewModels;
 /// <summary>A person the results can be narrowed to, plus "anyone".</summary>
 public sealed record PersonFilterOption(string? Id, string Display);
 
+/// <summary>A place in the archive to go to: one message, in one person's conversation.</summary>
+public sealed record ConversationTarget(string PersonId, long MessageId);
+
+/// <summary>
+/// One line of the conversation a result was said in.
+/// </summary>
+/// <remarks>
+/// §4: a line out of context is often nonsense — "yeah exactly" is the standing example — and a
+/// list of matches with nothing around them makes the reader open each one to find out which is
+/// the one they meant. A few lines either side is usually enough to tell.
+/// </remarks>
+public sealed record SearchPreviewRow(PersonMessageRow Row, bool IsHit)
+{
+    public string SenderLabel => Row.SenderLabel;
+
+    public string Text => Row.Plaintext;
+
+    public string Timestamp =>
+        DateTimeOffset.FromUnixTimeSeconds(Row.SentAtUnix).LocalDateTime.ToString("d MMM yyyy, HH:mm");
+}
+
 public sealed partial class SearchViewModel(
-    ArchiveQueries queries, ArchiveSearch search, ILogger<SearchViewModel>? logger = null)
+    ArchiveQueries queries,
+    ArchiveSearch search,
+    PersonConversation conversation,
+    ILogger<SearchViewModel>? logger = null)
     : ViewModelBase(logger)
 {
     private const int ResultLimit = 200;
+
+    /// <summary>How many lines either side of a hit the preview shows.</summary>
+    /// <remarks>
+    /// Small on purpose. This is here to identify a result, not to be read in — reading it is
+    /// what opening the conversation is for.
+    /// </remarks>
+    private const int PreviewRadius = 3;
+
+    /// <summary>Raised when a result should be opened where it was said.</summary>
+    public event EventHandler<ConversationTarget>? OpenInConversationRequested;
 
     public override string Title => "Search";
 
@@ -23,11 +57,27 @@ public sealed partial class SearchViewModel(
 
     public ObservableCollection<PersonFilterOption> People { get; } = [];
 
+    /// <summary>What was said around the selected result, the result itself included.</summary>
+    public ObservableCollection<SearchPreviewRow> Preview { get; } = [];
+
+    /// <summary>
+    /// The preview fetch the current selection started, if it is still running.
+    /// </summary>
+    /// <remarks>
+    /// Selecting a result is a property change — that is what a list binding does — so the fetch
+    /// it starts has nowhere to be awaited. Anything that needs the preview to have arrived waits
+    /// on this rather than on a delay.
+    /// </remarks>
+    public Task PendingPreview { get; private set; } = Task.CompletedTask;
+
     [ObservableProperty]
     private string? _query;
 
     [ObservableProperty]
     private PersonFilterOption? _selectedPerson;
+
+    [ObservableProperty]
+    private SearchHit? _selectedHit;
 
     [ObservableProperty]
     private long _totalMatches;
@@ -84,8 +134,61 @@ public sealed partial class SearchViewModel(
         }
     });
 
+    partial void OnSelectedHitChanged(SearchHit? value)
+    {
+        if (value is null)
+        {
+            Preview.Clear();
+            return;
+        }
+
+        PendingPreview = LoadPreviewAsync(value);
+    }
+
     [RelayCommand]
     private Task Run() => RunSearchAsync();
+
+    /// <summary>
+    /// Opens the selected result in the conversation it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Which conversation that is takes a lookup: a direct message is read in the conversation of
+    /// whoever is at the other end of the thread, not of whoever sent it, so your own line comes
+    /// back attributed to them.
+    /// </remarks>
+    [RelayCommand]
+    private Task OpenInConversation() => RunAsync(async () =>
+    {
+        if (SelectedHit is not { } hit)
+        {
+            return;
+        }
+
+        var personId = await Task.Run(() => conversation.PersonOf(hit.MessageId)).ConfigureAwait(true);
+
+        if (personId is null)
+        {
+            // A message whose sender has not been attributed to anyone has no conversation to be
+            // read in yet. Saying so beats a button that silently does nothing.
+            Error = "This message is not attributed to anyone yet, so there is no conversation to open.";
+            return;
+        }
+
+        OpenInConversationRequested?.Invoke(this, new ConversationTarget(personId, hit.MessageId));
+    });
+
+    private Task LoadPreviewAsync(SearchHit hit) => RunAsync(async () =>
+    {
+        Preview.Clear();
+
+        var around = await Task.Run(() => conversation.Context(hit.MessageId, PreviewRadius))
+            .ConfigureAwait(true);
+
+        foreach (var row in around)
+        {
+            Preview.Add(new SearchPreviewRow(row, row.Id == hit.MessageId));
+        }
+    });
 
     private Task RunSearchAsync() => RunAsync(async () =>
     {
@@ -93,6 +196,8 @@ public sealed partial class SearchViewModel(
         var filter = new SearchFilter(PersonId: SelectedPerson?.Id);
 
         Results.Clear();
+        Preview.Clear();
+        SelectedHit = null;
         HasSearched = true;
 
         if (string.IsNullOrWhiteSpace(query))

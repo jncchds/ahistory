@@ -81,6 +81,14 @@
       <Setter Property="CornerRadius" Value="12,12,4,12" />
     </Style>
 
+    <!-- The message a search result was opened on. Arriving in the middle of a conversation puts
+         a hundred bubbles on screen, and without this the one that was asked for is not one of
+         them in any way the reader can see. -->
+    <Style Selector="Border.bubble.revealed">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+
     <!-- Conversation and people lists: flat rows, accent selection, no Fluent chrome. -->
     <Style Selector="ListBox.rows">
       <Setter Property="Background" Value="Transparent" />
@@ -133,12 +141,20 @@
       <Setter Property="Padding" Value="14,7" />
     </Style>
 
-    <Style Selector="Button.accent">
+    <Style Selector="Button:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
     </Style>
 
-    <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <!-- The primary action on a page. Painted on the presenter rather than on the button,
+         because Fluent ships an "accent" class of its own whose template binding would otherwise
+         win, and after it the pointerover rule above. -->
+    <Style Selector="Button.accent /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+    </Style>
+
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource RailBrush}" />
     </Style>
 
     <Style Selector="ComboBox">
