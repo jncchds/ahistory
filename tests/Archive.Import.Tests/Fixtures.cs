@@ -11,6 +11,20 @@ namespace Archive.Import.Tests;
 /// </remarks>
 internal static class Fixtures
 {
+    /// <summary>The tests/fixtures folder.</summary>
+    internal static string Root => Path.Combine(RepoRoot(), "tests", "fixtures");
+
+    /// <summary>An empty throwaway folder, for fixtures a test builds itself.</summary>
+    internal static string Temp(string name)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "ahistory-tests", name, Guid.NewGuid().ToString("N"));
+
+        // Qualified: this class has its own Directory method, which would otherwise win.
+        System.IO.Directory.CreateDirectory(folder);
+
+        return folder;
+    }
+
     internal static string Directory(string name) =>
         Path.Combine(RepoRoot(), "tests", "fixtures", "telegram", name);
 

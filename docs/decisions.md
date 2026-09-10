@@ -484,3 +484,59 @@ The screenshots that verified this were rendered headlessly through Avalonia's S
 which is also how the layout bugs were found — the first render showed every contact named
 "Someone", which was a defect in the synthetic generator rather than the UI: it wrote a literal
 name on every message while varying only the id.
+
+---
+
+## D20 — Four platforms, one schema, and importers that refuse rather than guess
+
+`IPlatformImporter` turns a format into `NormalizedMessage`; everything downstream — dedupe, uids,
+media, sources, the schema — is untouched by adding a platform. §2's build order calls the second
+importer the thing that proves the schema was right, and it held: no schema change was needed for
+Hangouts, VK or QIP.
+
+Which importer reads a folder is **detected**, not chosen from a dropdown. Someone with a decade of
+archives has folders whose format they have long since forgotten, and asking them to classify it
+correctly before anything works is asking the wrong person. Each importer answers for itself and
+the most confident wins; when nothing recognizes a folder the app says what it looked for rather
+than picking the least-wrong reader.
+
+### The rule that makes this safe
+
+**An importer refuses rather than guesses.** For an archive, a reader that looks like it worked and
+silently mangles a third of the messages is far worse than one that stops and names the byte it did
+not understand — the second can be fixed, the first is discovered years later. So every new reader
+throws on anything it does not recognize: a Hangouts event with no id, a VK message with no
+`data-id`, a QIP block whose signature is wrong or whose timestamp is implausible.
+
+### What each reader actually rests on
+
+| Format | Basis | Confidence |
+|---|---|---|
+| Telegram | Documented export, verified against real ones | High — the reference importer |
+| Google Hangouts | Takeout JSON, a dead and therefore frozen format | Good — the shape is well known |
+| VK | HTML, structure confirmed against [Darkar25/VkArchiveParser](https://github.com/Darkar25/VkArchiveParser) | Medium — VK's markup has changed across years |
+| QIP / QIP Infium | `.qhf` binary, per [MolinRE/QIParser](https://github.com/MolinRE/QIParser) | Lowest — closed format, no specification, documented layout has unexplained gaps |
+
+None of the three new readers has been run against a real archive. The fixtures are built to the
+formats as documented, which proves the readers do what was intended — not that what was intended
+matches what is on someone's disk. The strictness is what makes that gap safe to ship: a wrong
+assumption stops the import instead of filling an archive.
+
+### Details worth keeping
+
+- **Hangouts timestamps are microseconds.** Read as milliseconds — the obvious assumption — the
+  entire archive lands in January 1970.
+- **A Hangouts LINE_BREAK segment carries no text**, so concatenating only the text fields runs
+  paragraphs together.
+- **The Hangouts owner is stated** in `self_conversation_state`. The first version inferred it from
+  "who is in every conversation", which a test immediately showed is ambiguous in a
+  two-conversation export.
+- **VK omits the sender link on your own messages.** Read as "unknown", half of every conversation
+  ends up on the wrong side.
+- **VK dates are Russian text**, and this app runs with invariant globalization, where `ru-RU`
+  collapses to the invariant culture and every one of them fails to parse. The month names are
+  mapped explicitly — both `май` and `мая`.
+- **QIP's text is obfuscated** with `b = 255 - b - i - 1`, which is its own inverse. Not encryption,
+  and never was.
+- **QIP names only the contact**, so the owner comes from the numeric folder above `History`.
+  Without it every message renders as incoming and a conversation reads as a monologue.

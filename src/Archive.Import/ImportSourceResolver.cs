@@ -1,7 +1,5 @@
-using System.Globalization;
-using System.Text.Json;
 using Archive.Data;
-using Archive.Import.Telegram;
+using Microsoft.Data.Sqlite;
 
 namespace Archive.Import;
 
@@ -11,24 +9,30 @@ namespace Archive.Import;
 /// <remarks>
 /// The suggestion ladder, strongest first:
 ///
-/// 1. The export names its account (personal_information.user_id) and a source for that account
-///    already exists — extend it. This is the re-export case and it is unambiguous.
+/// 1. The export names its account and a source for that account already exists — extend it. This
+///    is the re-export case and it is unambiguous.
 /// 2. The export names its account and no such source exists — create it.
-/// 3. The export does not name its account (a single-chat export) and the save has exactly one
-///    source for this platform — suggest extending it. A save holds one person's archive, so a
-///    second Telegram export in it is almost always the same account. Almost, not certainly,
-///    which is why this is a suggestion the user can override.
+/// 3. The export does not name its account, and the save has exactly one source for that
+///    platform — suggest extending it. A save holds one person's archive, so a second export from
+///    the same platform is almost always the same account. Almost, not certainly, which is why
+///    this is a suggestion the user can override.
 /// 4. Otherwise — create a source named after the folder, and let the user redirect it.
+///
+/// Formats that never state their account — Hangouts, VK, QIP, most of the old ones — reach step
+/// 3 or 4 every time, which is exactly why the answer is offered rather than assumed.
 /// </remarks>
 public static class ImportSourceResolver
 {
-    public static ImportPreview Preview(Database database, string exportFolder, string[] resultFiles)
+    public static ImportPreview Preview(Database database, string exportFolder, ImporterMatch match)
     {
         ArgumentNullException.ThrowIfNull(database);
-        ArgumentNullException.ThrowIfNull(resultFiles);
+        ArgumentNullException.ThrowIfNull(match);
 
-        var (accountId, accountName) = DetectAccount(resultFiles);
-        var existing = ExistingSources(database, TelegramNormalizer.Platform);
+        var platform = match.Platform;
+        var accountId = match.Detection.AccountId;
+        var accountName = match.Detection.AccountName;
+
+        var existing = ExistingSources(database, platform);
 
         string suggestedId;
         string? suggestedLabel;
@@ -36,8 +40,8 @@ public static class ImportSourceResolver
 
         if (accountId is not null)
         {
-            suggestedId = AccountSourceId(accountId);
-            suggestedLabel = accountName is null ? null : $"{accountName} (Telegram)";
+            suggestedId = AccountSourceId(platform, accountId);
+            suggestedLabel = $"{accountName ?? accountId} ({match.DisplayName})";
 
             reason = existing.Any(s => s.Id == suggestedId)
                 ? $"This export belongs to the same account as an existing source ({accountName ?? accountId})."
@@ -48,13 +52,13 @@ public static class ImportSourceResolver
             suggestedId = existing[0].Id;
             suggestedLabel = existing[0].Label;
             reason =
-                "This export does not name its account, and this archive has one Telegram source. "
+                $"This export does not name its account, and this archive has one {match.DisplayName} source. "
                 + "It is most likely part of that one — change it if this came from someone else.";
         }
         else
         {
-            suggestedId = FolderSourceId(exportFolder);
-            suggestedLabel = new DirectoryInfo(exportFolder).Name;
+            suggestedId = FolderSourceId(platform, exportFolder);
+            suggestedLabel = $"{new DirectoryInfo(exportFolder).Name} ({match.DisplayName})";
             reason = existing.Count == 0
                 ? "This export does not name its account, so it starts a new source."
                 : "This export does not name its account and several sources exist — pick the one it belongs to.";
@@ -66,8 +70,10 @@ public static class ImportSourceResolver
         return new ImportPreview
         {
             ExportFolder = exportFolder,
-            Platform = TelegramNormalizer.Platform,
-            FileCount = resultFiles.Length,
+            Platform = platform,
+            PlatformName = match.DisplayName,
+            FileCount = match.Detection.FileCount,
+            FormatNote = match.Detection.Note,
             DetectedAccountId = accountId,
             DetectedAccountName = accountName,
             OwnerName = ownerName,
@@ -81,7 +87,8 @@ public static class ImportSourceResolver
         };
     }
 
-    public static string AccountSourceId(string accountId) => $"telegram:account:{accountId}";
+    public static string AccountSourceId(string platform, string accountId) =>
+        $"{platform}:account:{accountId}";
 
     /// <summary>
     /// Last-resort id for an export that will not say who it belongs to.
@@ -90,36 +97,8 @@ public static class ImportSourceResolver
     /// Keyed by folder name rather than full path, so moving the export folder does not silently
     /// create a second source for the same data.
     /// </remarks>
-    public static string FolderSourceId(string exportFolder) =>
-        $"telegram:folder:{new DirectoryInfo(exportFolder).Name}";
-
-    private static (string? Id, string? Name) DetectAccount(string[] resultFiles)
-    {
-        foreach (var file in resultFiles)
-        {
-            using var stream = File.OpenRead(file);
-            var personal = TelegramExportReader.ReadPersonalInformation(stream);
-
-            if (personal is not { } element)
-            {
-                continue;
-            }
-
-            var id = Text(element, "user_id");
-
-            if (id is null)
-            {
-                continue;
-            }
-
-            var name = string.Join(' ', new[] { Text(element, "first_name"), Text(element, "last_name") }
-                .Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-
-            return (id, string.IsNullOrWhiteSpace(name) ? Text(element, "username") : name);
-        }
-
-        return (null, null);
-    }
+    public static string FolderSourceId(string platform, string exportFolder) =>
+        $"{platform}:folder:{new DirectoryInfo(exportFolder).Name}";
 
     /// <summary>The save's owner and the platform accounts already known to be theirs.</summary>
     private static (string? Name, HashSet<string> Accounts) Owner(Database database)
@@ -186,20 +165,5 @@ public static class ImportSourceResolver
         }
 
         return sources;
-    }
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value))
-        {
-            return null;
-        }
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number when value.TryGetInt64(out var n) => n.ToString(CultureInfo.InvariantCulture),
-            _ => null,
-        };
     }
 }

@@ -164,7 +164,7 @@ public sealed class ImportViewModelTests
         await page.BrowseCommand.ExecuteAsync(null);
 
         Assert.NotNull(page.Error);
-        Assert.Contains("JSON, not HTML", page.Error!, StringComparison.Ordinal);
+        Assert.Contains("does not look like an export", page.Error!, StringComparison.Ordinal);
         Assert.False(page.IsBusy);
     }
 

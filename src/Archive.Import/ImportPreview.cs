@@ -34,7 +34,20 @@ public sealed record ImportPreview
 {
     public required string ExportFolder { get; init; }
     public required string Platform { get; init; }
+
+    /// <summary>What to call that platform in the UI: "Telegram", "Google Hangouts".</summary>
+    public required string PlatformName { get; init; }
+
     public required int FileCount { get; init; }
+
+    /// <summary>
+    /// Anything the user should know about this format before importing.
+    /// </summary>
+    /// <remarks>
+    /// Where an importer rests on reverse engineering rather than a published spec, it says so
+    /// here. Someone importing a decade-old history deserves to know which readers are guesses.
+    /// </remarks>
+    public string? FormatNote { get; init; }
 
     /// <summary>The account the export identifies itself as belonging to, when it says.</summary>
     public string? DetectedAccountId { get; init; }

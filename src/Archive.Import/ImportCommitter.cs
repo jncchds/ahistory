@@ -125,29 +125,11 @@ public sealed class ImportCommitter : IDisposable
     /// on person would reject a second one anyway; doing it here means the import succeeds
     /// instead of failing on a constraint.
     /// </remarks>
-    public void SeedOwner(JsonElement personalInformation)
+    public void SeedOwner(NormalizedIdentity identity)
     {
-        var userId = Text(personalInformation, "user_id");
+        ArgumentNullException.ThrowIfNull(identity);
 
-        if (userId is null)
-        {
-            return;
-        }
-
-        var name = string.Join(' ', new[]
-        {
-            Text(personalInformation, "first_name"),
-            Text(personalInformation, "last_name"),
-        }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            name = Text(personalInformation, "username") ?? userId;
-        }
-
-        var identity = new NormalizedIdentity(
-            Platform, userId, Text(personalInformation, "username"), name, IsSynthetic: false);
-
+        var name = identity.DisplayName;
         var identityId = EnsureIdentity(identity);
         var ownerId = ExistingOwnerId();
 

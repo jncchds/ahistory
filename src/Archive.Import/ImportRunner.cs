@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
-using System.Text.Json;
 using Archive.Data;
-using Archive.Import.Telegram;
 using Archive.Media;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,39 +11,45 @@ namespace Archive.Import;
 public sealed record ImportProgress(string CurrentChat, long MessagesSeen, long MessagesInserted);
 
 /// <summary>
-/// Runs one import: read the export, normalize it, store its media, commit it.
+/// Runs one import: read the export, store its media, commit it.
 /// </summary>
 /// <remarks>
-/// §2: the export folder is ingested as a unit. The JSON references media by relative path, so
-/// the files only make sense alongside it, and a large account is split across
-/// <c>result.json</c>, <c>result2.json</c> and so on — all of which are one logical import with
-/// one import row.
+/// Platform-neutral. Which format a folder is gets decided by <see cref="ImporterRegistry"/>, and
+/// everything from the normalized message onward — dedupe, media, sources, the schema itself — is
+/// identical whichever importer produced it. §2's build order calls the second importer the thing
+/// that proves the schema was right; this is where that claim is cashed.
 /// </remarks>
-public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILogger<ImportRunner>? logger = null)
+public sealed class ImportRunner(
+    Database database,
+    IMediaStore mediaStore,
+    ILogger<ImportRunner>? logger = null,
+    ImporterRegistry? registry = null)
 {
     private readonly Database _database = database ?? throw new ArgumentNullException(nameof(database));
     private readonly IMediaStore _mediaStore = mediaStore ?? throw new ArgumentNullException(nameof(mediaStore));
     private readonly ILogger _log = logger ?? NullLogger<ImportRunner>.Instance;
+    private readonly ImporterRegistry _registry = registry ?? new ImporterRegistry();
+
+    public ImporterRegistry Registry => _registry;
 
     /// <summary>
-    /// Inspects an export folder without writing anything, so the caller can ask the user which
-    /// source it belongs to.
+    /// Inspects a folder without writing anything, so the caller can ask the user where it belongs.
     /// </summary>
     /// <remarks>
-    /// Reads only far enough to find the export's personal_information block — a few kilobytes,
-    /// not a pass over the whole file.
+    /// Detection is cheap by contract — filenames and at most a few kilobytes — so this stays
+    /// instant even when pointed at a folder holding a decade of archives.
     /// </remarks>
     public ImportPreview Preview(string exportFolder)
     {
-        var (folder, files) = Locate(exportFolder);
+        var (folder, match) = Locate(exportFolder);
 
-        return ImportSourceResolver.Preview(_database, folder, files);
+        return ImportSourceResolver.Preview(_database, folder, match);
     }
 
     /// <summary>
-    /// Imports a Telegram export folder.
+    /// Imports an export folder.
     /// </summary>
-    /// <param name="exportFolder">Folder containing result.json and its media directories.</param>
+    /// <param name="exportFolder">The folder the export unpacked into.</param>
     /// <param name="onProgress">
     /// Called as messages are committed. The caller marshals to a UI thread if it needs to;
     /// nothing here touches one.
@@ -56,8 +60,8 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
     /// non-interactive caller wants; the UI passes the user's answer instead.
     /// </param>
     /// <param name="storeRawJson">
-    /// Whether to keep each message's original export JSON (§1). The largest single thing in the
-    /// database; `ahistory stats` reports how much.
+    /// Whether to keep each message's original export data (§1). The largest single thing in the
+    /// database; <c>ahistory stats</c> reports how much.
     /// </param>
     public ImportStats Run(
         string exportFolder,
@@ -66,8 +70,8 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
         string? sourceId = null,
         bool storeRawJson = true)
     {
-        var (folder, files) = Locate(exportFolder);
-        var preview = ImportSourceResolver.Preview(_database, folder, files);
+        var (folder, match) = Locate(exportFolder);
+        var preview = ImportSourceResolver.Preview(_database, folder, match);
 
         var resolvedSource = sourceId ?? preview.SuggestedSourceId;
 
@@ -77,15 +81,15 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
             : null;
 
         using var committer = new ImportCommitter(
-            _database, TelegramNormalizer.Platform, resolvedSource, label, folder,
-            Fingerprint(files), batchSize, storeRawJson);
+            _database, match.Platform, resolvedSource, label, folder,
+            Fingerprint(folder), batchSize, storeRawJson);
 
         // The folder path is the one piece of user-chosen text logged here on purpose: an import
         // that cannot say where it read from is very hard to diagnose. Nothing from inside the
         // export is written to the log.
         _log.LogInformation(
-            "Import {ImportId} starting from {ExportFolder} ({FileCount} file(s)) into source {SourceId}.",
-            committer.ImportId, folder, files.Length, resolvedSource);
+            "Import {ImportId} starting from {ExportFolder} as {Platform} ({FileCount} file(s)) into source {SourceId}.",
+            committer.ImportId, folder, match.Platform, match.Detection.FileCount, resolvedSource);
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -93,11 +97,7 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
         {
             var sink = new CommittingSink(committer, _mediaStore, folder, onProgress, _log);
 
-            foreach (var file in files)
-            {
-                using var stream = File.OpenRead(file);
-                TelegramExportReader.Read(stream, sink);
-            }
+            match.Importer.Read(folder, sink);
 
             committer.Complete();
 
@@ -139,8 +139,8 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
         }
     }
 
-    /// <summary>Validates an export folder and finds its JSON files.</summary>
-    private static (string Folder, string[] Files) Locate(string exportFolder)
+    /// <summary>Finds the folder and the importer that reads it.</summary>
+    private (string Folder, ImporterMatch Match) Locate(string exportFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exportFolder);
 
@@ -151,90 +151,78 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
             throw new DirectoryNotFoundException($"No such export folder: {folder}");
         }
 
-        var files = ResultFiles(folder);
+        var match = _registry.Detect(folder);
 
-        if (files.Length == 0)
+        if (match is null)
         {
+            // Naming what it looked for beats "unsupported format": most of the time the folder
+            // is one level up or down from the right one, and this says so.
             throw new InvalidDataException(
-                $"'{folder}' contains no result.json. Export from Telegram Desktop as JSON, not HTML (§2).");
+                $"'{folder}' does not look like an export this app can read. Expected one of: "
+                + string.Join(", ", _registry.Importers.Select(i => i.DisplayName))
+                + ". Point at the folder the export unpacked into — for Telegram that is the one "
+                + "containing result.json, exported as JSON rather than HTML (§2).");
         }
 
-        return (folder, files);
+        return (folder, match);
     }
 
     /// <summary>
-    /// The export's JSON files, in the order Telegram numbers them.
+    /// Identifies the folder's contents, so re-importing the same bytes is recognizable.
     /// </summary>
     /// <remarks>
-    /// Ordinal sort on a zero-padded name would be wrong for result10.json, so the numeric
-    /// suffix is compared as a number. Messages are keyed by uid, so order does not affect
-    /// correctness — but it does affect which import is recorded as discovering a row.
+    /// Every file's name and size rather than its contents: hashing a multi-gigabyte media folder
+    /// to answer "is this the same export?" would cost more than the import.
     /// </remarks>
-    private static string[] ResultFiles(string folder) =>
-        [.. Directory.EnumerateFiles(folder, "result*.json")
-            .OrderBy(SuffixNumber)
-            .ThenBy(Path.GetFileName, StringComparer.Ordinal)];
-
-    private static int SuffixNumber(string path)
+    private static string Fingerprint(string folder)
     {
-        var name = Path.GetFileNameWithoutExtension(path);
-        var digits = name.AsSpan("result".Length);
+        var builder = new System.Text.StringBuilder();
 
-        return digits.Length > 0 && int.TryParse(digits, out var n) ? n : 1;
-    }
-
-    /// <summary>
-    /// Identifies the export's contents, so re-importing the same bytes is recognizable.
-    /// </summary>
-    private static string Fingerprint(string[] files)
-    {
-        using var hasher = SHA256.Create();
-
-        foreach (var file in files)
+        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                     .OrderBy(f => f, StringComparer.Ordinal))
         {
-            using var stream = File.OpenRead(file);
-            var digest = SHA256.HashData(stream);
-            hasher.TransformBlock(digest, 0, digest.Length, null, 0);
+            builder.Append(Path.GetRelativePath(folder, file))
+                   .Append(':')
+                   .Append(new FileInfo(file).Length)
+                   .Append('\n');
         }
 
-        hasher.TransformFinalBlock([], 0, 0);
-        return Convert.ToHexStringLower(hasher.Hash!);
+        return Convert.ToHexStringLower(
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(builder.ToString())));
     }
 
+    /// <summary>Commits what an importer reads.</summary>
     private sealed class CommittingSink(
         ImportCommitter committer,
         IMediaStore mediaStore,
         string exportFolder,
         Action<ImportProgress>? onProgress,
-        ILogger log) : ITelegramExportSink
+        ILogger log) : IImportSink
     {
         private string _currentChat = string.Empty;
 
-        public void OnPersonalInformation(JsonElement element) => committer.SeedOwner(element);
+        public void OnOwner(NormalizedIdentity owner) => committer.SeedOwner(owner);
 
-        public void OnChat(TelegramChatHeader chat)
+        public void OnThread(NormalizedThread thread)
         {
-            _currentChat = chat.Name ?? chat.SourceThreadId;
-            committer.EnsureThread(chat.SourceThreadId, chat.ThreadKind, chat.Name);
+            _currentChat = thread.Title ?? thread.SourceThreadId;
+            committer.EnsureThread(thread.SourceThreadId, thread.Kind, thread.Title);
 
-            // The chat's id and kind, never its name: a list of who someone talks to is exactly
+            // The thread's id and kind, never its name: a list of who someone talks to is exactly
             // the sort of thing a log must not quietly accumulate.
-            log.LogDebug(
-                "Reading chat {ThreadId} ({ThreadKind}).", chat.SourceThreadId, chat.ThreadKind);
+            log.LogDebug("Reading thread {ThreadId} ({ThreadKind}).", thread.SourceThreadId, thread.Kind);
         }
 
-        public void OnMessage(TelegramChatHeader chat, JsonElement message)
+        public void OnMessage(NormalizedThread thread, NormalizedMessage message)
         {
-            var normalized = TelegramNormalizer.Normalize(chat, message);
-
             // Media is resolved lazily: the committer only asks when the message is genuinely
             // new or changed. On a re-import that is almost never, which is the difference
             // between re-hashing a whole media folder and touching none of it.
-            committer.Add(normalized, () =>
+            committer.Add(message, () =>
             {
-                var stored = new List<StoredMedia?>(normalized.Media.Count);
+                var stored = new List<StoredMedia?>(message.Media.Count);
 
-                foreach (var media in normalized.Media)
+                foreach (var media in message.Media)
                 {
                     stored.Add(Store(media));
                 }
@@ -250,9 +238,9 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
         /// Puts one attachment in the media store, if the export actually shipped it.
         /// </summary>
         /// <remarks>
-        /// Three outcomes, all normal: the export omitted the file (§2's sentinel), the file is
-        /// referenced but absent from the folder, or it is present and stored. None of them is an
-        /// import failure — a missing photo must not cost you the message it was attached to.
+        /// Three outcomes, all normal: the export omitted the file, the file is referenced but
+        /// absent from the folder, or it is present and stored. None of them is an import
+        /// failure — a missing photo must not cost you the message it was attached to.
         /// </remarks>
         private StoredMedia? Store(NormalizedMedia media)
         {
@@ -283,8 +271,7 @@ public sealed class ImportRunner(Database database, IMediaStore mediaStore, ILog
             }
             catch (IOException ex)
             {
-                // One unreadable file must not cost the whole import. §2's principle applied to
-                // a different failure: a missing photo never costs you the message.
+                // One unreadable file must not cost the whole import.
                 committer.Stats.MediaNotFound++;
                 log.LogWarning(ex, "Could not store attachment {ExportPath}; continuing.", media.ExportPath);
 

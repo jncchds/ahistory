@@ -158,6 +158,13 @@ internal static class Commands
         var chosenSource = Option(args, "--source");
         var preview = runner.Preview(args[2]);
 
+        Console.WriteLine($"format   {preview.PlatformName} ({preview.FileCount:N0} file(s))");
+
+        if (preview.FormatNote is { } note)
+        {
+            Console.WriteLine($"         {note}");
+        }
+
         Console.WriteLine($"source   {chosenSource ?? preview.SuggestedSourceId}");
 
         // A save is one person's archive (decisions.md D13). A previously unseen account gets

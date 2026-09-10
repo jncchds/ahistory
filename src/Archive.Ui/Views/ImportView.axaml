@@ -24,6 +24,21 @@
         </DockPanel>
       </StackPanel>
 
+      <!-- What the folder turned out to be. Someone with a decade of archives has folders whose
+           format they have long forgotten, so the app says what it found. -->
+      <StackPanel Spacing="4" IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock>
+          <Run Text="Detected:" />
+          <Run Text="{Binding Preview.PlatformName}" FontWeight="SemiBold" />
+          <Run Text="{Binding Preview.FileCount, StringFormat=.({0:N0} file(s)).}" />
+        </TextBlock>
+
+        <!-- Formats read from reverse engineering rather than a published spec say so. -->
+        <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+                   IsVisible="{Binding Preview.FormatNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding Preview.FormatNote}" />
+      </StackPanel>
+
       <!-- Which source this belongs to is a question, not a deduction (decisions.md D11). -->
       <StackPanel Spacing="6" IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
         <TextBlock Text="This export belongs to" />

@@ -275,7 +275,9 @@ public sealed class ImportRunnerTests
 
         var exception = Assert.Throws<InvalidDataException>(() => save.Import(empty));
 
-        Assert.Contains("JSON, not HTML", exception.Message, StringComparison.Ordinal);
+        // The message names what it looked for, which is what makes "wrong folder" fixable.
+        Assert.Contains("does not look like an export", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Telegram", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>A failed import is marked failed, not left looking like a short success.</summary>

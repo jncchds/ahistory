@@ -1,0 +1,84 @@
+{
+  "conversations": [
+    {
+      "conversation": {
+        "conversation_id": { "id": "UgxABC123" },
+        "conversation": {
+          "id": { "id": "UgxABC123" },
+          "type": "STICKY_ONE_TO_ONE",
+          "self_conversation_state": {
+            "self_read_state": { "participant_id": { "gaia_id": "111111111111111111111" } }
+          },
+          "participant_data": [
+            { "id": { "gaia_id": "111111111111111111111" }, "fallback_name": "Owner Person" },
+            { "id": { "gaia_id": "222222222222222222222" }, "fallback_name": "Sam Ruiz" }
+          ]
+        }
+      },
+      "events": [
+        {
+          "event_id": "7-A-1",
+          "sender_id": { "gaia_id": "222222222222222222222" },
+          "timestamp": "1451651696123456",
+          "chat_message": {
+            "message_content": {
+              "segment": [
+                { "type": "TEXT", "text": "the harbour was freezing" }
+              ]
+            }
+          }
+        },
+        {
+          "event_id": "7-A-2",
+          "sender_id": { "gaia_id": "111111111111111111111" },
+          "timestamp": "1451651796123456",
+          "chat_message": {
+            "message_content": {
+              "segment": [
+                { "type": "TEXT", "text": "first line" },
+                { "type": "LINE_BREAK" },
+                { "type": "TEXT", "text": "second line, see " },
+                { "type": "LINK", "text": "example.org", "link_data": { "link_target": "https://example.org" } }
+              ]
+            }
+          }
+        },
+        {
+          "event_id": "7-A-3",
+          "sender_id": { "gaia_id": "222222222222222222222" },
+          "timestamp": "1451651896123456",
+          "hangout_event": { "event_type": "START_HANGOUT" }
+        }
+      ]
+    },
+    {
+      "conversation": {
+        "conversation_id": { "id": "UgxGROUP9" },
+        "conversation": {
+          "id": { "id": "UgxGROUP9" },
+          "type": "GROUP",
+          "name": "Prague trip",
+          "participant_data": [
+            { "id": { "gaia_id": "111111111111111111111" }, "fallback_name": "Owner Person" },
+            { "id": { "gaia_id": "222222222222222222222" }, "fallback_name": "Sam Ruiz" },
+            { "id": { "gaia_id": "333333333333333333333" }, "fallback_name": "Марина Коваль" }
+          ]
+        }
+      },
+      "events": [
+        {
+          "event_id": "7-B-1",
+          "sender_id": { "gaia_id": "333333333333333333333" },
+          "timestamp": "1451738096123456",
+          "chat_message": {
+            "message_content": {
+              "segment": [
+                { "type": "TEXT", "text": "мы были в Праге весной" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
