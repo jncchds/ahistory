@@ -1,4 +1,23 @@
-# ahistory
+| M7 | Packaging for Windows, Linux and macOS | ✅ || Source | What to point at | How well it is known |
+|---|---|---|
+| **Telegram** | the folder containing `result.json` | Documented format, verified against real exports |
+| **Google Hangouts** | the Takeout folder containing `Hangouts.json` | Well known, and frozen — Hangouts shut down in 2022 |
+| **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
+| **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format, read from a community reverse engineering |
+| WhatsApp, Meta (Facebook/Instagram) | — | Planned |
+| Signal, iMessage, Discord | — | Under consideration — local databases, or need third-party tooling |
+
+Just point the app at the folder: it works out which format it is, says so, and refuses rather
+than guessing if it does not recognize it.
+
+**Only the Telegram reader has met a real archive.** The other three are built to the formats as
+documented and covered by tests, which proves they do what was intended — not that what was
+intended matches what is on your disk. They are deliberately strict: anything a reader does not
+understand stops the import and names it, because for an archive a reader that silently mangles a
+third of your messages is far worse than one that stops.
+
+Export from Telegram Desktop as **JSON**, not HTML, and keep the whole export folder together —
+the media files are referenced by relative path.# ahistory
 
 A local-first personal message archive.
 
@@ -23,8 +42,8 @@ and the archive stays fully usable while that work runs in the background. This 
 
 ## Status
 
-Early. V1 covers the archive itself: schema, Telegram importer, media store, per-person
-conversation view, keyword search.
+**0.1.0.** The archive itself: schema, four importers, media store, per-person conversation view,
+keyword search, and standalone builds for all three desktop platforms.
 
 | Milestone | | |
 |---|---|---|
@@ -62,11 +81,23 @@ messages they sent — with surrounding context, because an isolated group line 
 
 ## Supported sources
 
-| Source | Status |
-|---|---|
-| Telegram (JSON export from Telegram Desktop) | Working |
-| WhatsApp, Meta (Facebook/Instagram) | Planned |
-| Signal, iMessage, Discord | Under consideration — these are local databases or need third-party tooling |
+| Source | What to point at | How well the format is known |
+|---|---|---|
+| **Telegram** | the folder containing `result.json` | Documented, and verified against real exports |
+| **Google Hangouts** | the Takeout folder containing `Hangouts.json` | Well known, and frozen — Hangouts shut down in 2022 |
+| **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
+| **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format, read from a community reverse engineering |
+| WhatsApp, Meta (Facebook/Instagram) | — | Planned |
+| Signal, iMessage, Discord | — | Under consideration: local databases, or need third-party tooling |
+
+Point the app at the folder and it works out which format it is, says so, and refuses rather than
+guessing if it does not recognize it.
+
+**Only the Telegram reader has met a real archive.** The other three are built to the formats as
+documented and covered by tests, which proves they do what was intended — not that what was
+intended matches what is on your disk. They are deliberately strict: anything a reader does not
+understand stops the import and names it, because for an archive a reader that silently mangles a
+third of your messages is far worse than one that stops.
 
 Export from Telegram Desktop as **JSON**, not HTML, and keep the whole export folder together —
 the media files are referenced by relative path.
