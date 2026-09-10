@@ -49,7 +49,29 @@ internal static class Program
                 "ahistory starting. Save {SavePath}, media {MediaPath}, logs {LogPath}.",
                 database.DatabasePath, options.ResolveMediaDirectory(), LogSettings.DefaultDirectory);
 
-            database.Migrate();
+            // Inspected rather than migrated outright: a save made by an older version is carried
+            // forward only if someone says so, and the only way to ask is to have a window. So the
+            // question is handed to the UI and the app starts either way.
+            var status = database.Inspect();
+
+            if (status.CanUpgrade)
+            {
+                log.LogInformation(
+                    "The save is behind by {Count} migration(s); asking before upgrading.",
+                    status.Pending.Count);
+
+                App.PendingUpgrade = new UpgradeViewModel(
+                    database,
+                    status.Pending,
+                    BackupPathFor(database.DatabasePath, status.Pending),
+                    loggerFactory.CreateLogger<UpgradeViewModel>());
+            }
+            else
+            {
+                // Creates a new save, or refuses one this build cannot open, with the reason.
+                database.Migrate();
+            }
+
             Directory.CreateDirectory(options.ResolveMediaDirectory());
 
             App.Services = BuildContainer(options, database, loggerFactory);
@@ -68,6 +90,24 @@ internal static class Program
 
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Where the copy taken before an upgrade goes: beside the save, named for the migration it
+    /// predates, never overwriting an existing file.
+    /// </summary>
+    /// <remarks>Matches what `ahistory init --upgrade` does, so both heads leave the same trail.</remarks>
+    private static string BackupPathFor(string savePath, IReadOnlyList<string> pending)
+    {
+        var stage = pending[0].Split('_')[0];
+        var candidate = $"{savePath}.pre-{stage}";
+
+        for (var n = 2; File.Exists(candidate); n++)
+        {
+            candidate = $"{savePath}.pre-{stage}-{n}";
+        }
+
+        return candidate;
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
