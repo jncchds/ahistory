@@ -129,7 +129,7 @@ internal static class Commands
     }
 
     /// <summary>
-    /// Imports a Telegram export folder into a save.
+    /// Imports an export folder into a save, whichever platform produced it.
     /// </summary>
     /// <remarks>
     /// This is how the acceptance criterion is checked against a real archive: run it, run it
@@ -434,11 +434,12 @@ internal static class Commands
               ahistory init <path-to-save.db>   create or migrate a save
               ahistory hash <file>              show the content address a file would take
               ahistory import <save.db> <folder> [--source <id>] [--no-raw-json]
-                                                import a Telegram export folder
+                                                import an export folder; the format is detected
               ahistory sources <save.db>        list the sources in a save
               ahistory stats <save.db>          what the archive is made of
               ahistory synth <folder> [--messages N] [--chats N]
-                                                write a synthetic export (no real data)
+                                                write a synthetic export (no real data;
+                                                --messages is an upper bound)
 
             A save is the .db file plus a media folder beside it. Both are created by `init`.
             """);

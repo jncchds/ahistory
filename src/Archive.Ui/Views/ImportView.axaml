@@ -14,9 +14,9 @@
       <TextBlock Classes="heading" Text="Import" />
 
       <StackPanel Spacing="6">
-        <TextBlock Text="Telegram export folder" />
+        <TextBlock Text="Export folder" />
         <TextBlock Classes="subtle" FontSize="12"
-                   Text="Export from Telegram Desktop as JSON, not HTML. Choose the folder containing result.json." />
+                   Text="Telegram, Google Hangouts, VK or QIP. Choose the exported folder and the format is worked out for you — Telegram exports must be JSON, not HTML." />
         <DockPanel>
           <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0"
                   Command="{Binding BrowseCommand}" />

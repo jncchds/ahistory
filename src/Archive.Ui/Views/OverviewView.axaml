@@ -20,7 +20,7 @@
     <StackPanel DockPanel.Dock="Top" IsVisible="{Binding IsEmpty}" Spacing="8">
       <TextBlock Text="This archive is empty." FontSize="15" />
       <TextBlock Classes="subtle" TextWrapping="Wrap"
-                 Text="Open Import and choose a Telegram export folder — the one containing result.json." />
+                 Text="Open Import and choose an exported folder — Telegram, Google Hangouts, VK or QIP." />
     </StackPanel>
 
     <StackPanel IsVisible="{Binding !IsEmpty}" Spacing="20">

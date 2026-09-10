@@ -60,7 +60,7 @@ public sealed partial class ImportViewModel(
     [RelayCommand]
     private async Task Browse()
     {
-        var folder = await folderPicker.PickAsync("Choose a Telegram export folder").ConfigureAwait(true);
+        var folder = await folderPicker.PickAsync("Choose an export folder").ConfigureAwait(true);
 
         if (folder is not null)
         {
