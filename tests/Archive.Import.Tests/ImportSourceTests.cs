@@ -12,13 +12,13 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(
             "telegram:account:777001",
             save.Scalar<string>("SELECT id FROM import_source;"));
 
-        Assert.Equal("Kirill Chekanov (Telegram)", save.Scalar<string>("SELECT label FROM import_source;"));
+        Assert.Equal("Owner Synthetic (Telegram)", save.Scalar<string>("SELECT label FROM import_source;"));
     }
 
     /// <summary>
@@ -90,12 +90,12 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
-        var preview = save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+        var preview = save.Runner.Preview(save.Export("group-and-dm", Exports.GroupAndDm()));
 
         Assert.Equal("777001", preview.DetectedAccountId);
-        Assert.Equal("Kirill Chekanov", preview.DetectedAccountName);
+        Assert.Equal("Owner Synthetic", preview.DetectedAccountName);
         Assert.Equal("telegram:account:777001", preview.SuggestedSourceId);
         Assert.True(preview.SuggestedSourceExists);
         Assert.Contains("same account", preview.SuggestionReason, StringComparison.OrdinalIgnoreCase);
@@ -110,7 +110,7 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+        save.Runner.Preview(save.Export("group-and-dm", Exports.GroupAndDm()));
 
         Assert.Equal(0, save.Scalar<long>("SELECT count(*) FROM import;"));
         Assert.Equal(0, save.Scalar<long>("SELECT count(*) FROM import_source;"));
@@ -126,9 +126,9 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
-        var preview = save.Runner.Preview(Fixtures.Directory("single-chat"));
+        var preview = save.Runner.Preview(save.Export("single-chat", Exports.SingleChat()));
 
         Assert.Null(preview.DetectedAccountId);
         Assert.Equal("telegram:account:777001", preview.SuggestedSourceId);
@@ -141,7 +141,7 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        var preview = save.Runner.Preview(Fixtures.Directory("single-chat"));
+        var preview = save.Runner.Preview(save.Export("single-chat", Exports.SingleChat()));
 
         Assert.Equal("telegram:folder:single-chat", preview.SuggestedSourceId);
         Assert.False(preview.SuggestedSourceExists);
@@ -156,8 +156,8 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
-        save.Runner.Run(Fixtures.Directory("group-and-dm"), sourceId: "telegram:account:999");
+        save.Import("group-and-dm", Exports.GroupAndDm());
+        save.Runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()), sourceId: "telegram:account:999");
 
         Assert.Equal(2, save.Scalar<long>("SELECT count(*) FROM import_source;"));
 
@@ -171,8 +171,8 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
-        save.Runner.Run(Fixtures.Directory("single-chat"), sourceId: "telegram:account:999");
+        save.Import("group-and-dm", Exports.GroupAndDm());
+        save.Runner.Run(save.Export("single-chat", Exports.SingleChat()), sourceId: "telegram:account:999");
 
         Assert.Equal(5, save.Scalar<long>("""
             SELECT count(*) FROM message m
@@ -193,10 +193,10 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
         save.Execute("UPDATE import_source SET label = 'My Telegram';");
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal("My Telegram", save.Scalar<string>("SELECT label FROM import_source;"));
     }
@@ -239,11 +239,11 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
-        var mine = save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+        var mine = save.Runner.Preview(save.Export("group-and-dm", Exports.GroupAndDm()));
         Assert.False(mine.AccountIsNewToOwner);
-        Assert.Equal("Kirill Chekanov", mine.OwnerName);
+        Assert.Equal("Owner Synthetic", mine.OwnerName);
 
         var stranger = save.WriteExport("stranger", Export(999003, """
             { "id": 1, "type": "message", "date_unixtime": "1554221523", "from_id": "user5001",
@@ -254,7 +254,7 @@ public sealed class ImportSourceTests
 
         Assert.True(preview.AccountIsNewToOwner);
         Assert.Equal("999003", preview.DetectedAccountId);
-        Assert.Equal("Kirill Chekanov", preview.OwnerName);
+        Assert.Equal("Owner Synthetic", preview.OwnerName);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public sealed class ImportSourceTests
     {
         using var save = new TempSave();
 
-        var preview = save.Runner.Preview(Fixtures.Directory("group-and-dm"));
+        var preview = save.Runner.Preview(save.Export("group-and-dm", Exports.GroupAndDm()));
 
         Assert.False(preview.AccountIsNewToOwner);
         Assert.Null(preview.OwnerName);
@@ -271,7 +271,7 @@ public sealed class ImportSourceTests
     private static string Export(long ownerId, string messages) => $$"""
         {
           "about": "Test export.",
-          "personal_information": { "user_id": {{ownerId}}, "first_name": "Kirill", "last_name": "Chekanov" },
+          "personal_information": { "user_id": {{ownerId}}, "first_name": "Owner", "last_name": "Synthetic" },
           "chats": { "about": "Chats.", "list": [
             { "name": "Sam Ruiz", "type": "personal_chat", "id": 100, "messages": [ {{messages}} ] }
           ] }

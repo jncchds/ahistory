@@ -158,4 +158,123 @@ public sealed class IdentityMergerTests
         Assert.Throws<InvalidOperationException>(() => merger.MergeInto("nope", Seed.SamPersonId));
         Assert.Throws<InvalidOperationException>(() => merger.MergeInto(Seed.IdentityId, "nobody"));
     }
+
+    // Merging one person into another, which is what someone actually wants once they have
+    // realized that two rows in the People list are one human.
+
+    /// <summary>Every account moves at once, and the emptied person goes.</summary>
+    [Fact]
+    public void Merging_a_person_moves_all_of_their_accounts()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        AddSecondAccountFor(db, Seed.SamPersonId, "idn-vk-sam");
+
+        // A third person, with one account, who turns out to be the same human.
+        db.Execute($"""
+            INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)
+            VALUES ('idn-gh-sam', 'hangouts', '9', 'Sam', '{Seed.ImportId}', '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO person (id, display_name, is_owner, created_utc)
+            VALUES ('p:gh-sam', 'Sam', 0, '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)
+            VALUES ('idn-gh-sam', 'p:gh-sam', 'auto', '2020-01-01T00:00:00.0000000+00:00');
+            """);
+
+        merger.MergePeople(Seed.SamPersonId, "p:gh-sam");
+
+        Assert.Equal(
+            3,
+            db.Scalar<long>("SELECT count(*) FROM identity_person WHERE person_id = 'p:gh-sam';"));
+
+        // Nothing points at the emptied person any more, so it is gone rather than left as a
+        // second, empty copy in the People list.
+        Assert.Equal(
+            0,
+            db.Scalar<long>($"SELECT count(*) FROM person WHERE id = '{Seed.SamPersonId}';"));
+
+        // Messages are untouched, which is what makes any of this reversible (§1).
+        Assert.Equal(
+            Seed.IdentityId,
+            db.Scalar<string>("SELECT sender_identity_id FROM message WHERE uid = 'tg/100/1';"));
+    }
+
+    /// <summary>
+    /// Merging a person into the owner needs the same confirmation as merging an account does.
+    /// </summary>
+    /// <remarks>
+    /// More is at stake here, not less: this moves everything that person ever said in one go.
+    /// </remarks>
+    [Fact]
+    public void Merging_a_person_into_the_owner_must_be_confirmed()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        Assert.Throws<InvalidOperationException>(
+            () => merger.MergePeople(Seed.SamPersonId, Seed.OwnerPersonId));
+
+        merger.MergePeople(Seed.SamPersonId, Seed.OwnerPersonId, confirmOwnerMerge: true);
+
+        Assert.Equal(
+            Seed.OwnerPersonId,
+            db.Scalar<string>($"SELECT person_id FROM identity_person WHERE identity_id = '{Seed.IdentityId}';"));
+    }
+
+    /// <summary>
+    /// The owner cannot be dissolved into a contact.
+    /// </summary>
+    /// <remarks>
+    /// P5: a save has exactly one owner and everything §7 derives is oriented around them. Merging
+    /// that person away leaves an archive with no subject, and the operation someone meant is the
+    /// one in the other direction.
+    /// </remarks>
+    [Fact]
+    public void The_owner_cannot_be_merged_into_someone_else()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        var error = Assert.Throws<InvalidOperationException>(
+            () => merger.MergePeople(Seed.OwnerPersonId, Seed.SamPersonId, confirmOwnerMerge: true));
+
+        Assert.Contains("owner", error.Message, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(
+            1, db.Scalar<long>("SELECT count(*) FROM person WHERE is_owner = 1;"));
+    }
+
+    [Fact]
+    public void Merging_a_person_into_themselves_does_nothing()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        merger.MergePeople(Seed.SamPersonId, Seed.SamPersonId);
+
+        Assert.Equal(
+            1,
+            db.Scalar<long>($"SELECT count(*) FROM identity_person WHERE person_id = '{Seed.SamPersonId}';"));
+    }
+
+    [Fact]
+    public void Merging_an_unknown_person_fails_clearly()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        Assert.Throws<InvalidOperationException>(() => merger.MergePeople("nobody", Seed.SamPersonId));
+        Assert.Throws<InvalidOperationException>(() => merger.MergePeople(Seed.SamPersonId, "nobody"));
+    }
+
+    private static void AddSecondAccountFor(TempDatabase db, string personId, string identityId) =>
+        db.Execute($"""
+            INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)
+            VALUES ('{identityId}', 'vk', '222', 'Sam', '{Seed.ImportId}', '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)
+            VALUES ('{identityId}', '{personId}', 'manual', '2020-01-01T00:00:00.0000000+00:00');
+            """);
 }

@@ -1,3 +1,4 @@
+using Archive.Import.Synthetic;
 using Archive.Ui.Services;
 using Archive.Ui.ViewModels;
 
@@ -166,6 +167,72 @@ public sealed class ImportViewModelTests
         Assert.NotNull(page.Error);
         Assert.Contains("does not look like an export", page.Error!, StringComparison.Ordinal);
         Assert.False(page.IsBusy);
+    }
+
+    /// <summary>
+    /// A format that will not name its account gets asked about rather than guessed at.
+    /// </summary>
+    /// <remarks>
+    /// Inventing an owner is what left a user's real account arriving as an ordinary contact, and
+    /// a history file for their own account reading as a conversation with themselves.
+    /// </remarks>
+    [Fact]
+    public async Task An_export_that_does_not_name_its_account_is_asked_about()
+    {
+        using var save = new TempSave();
+
+        var page = new ImportViewModel(
+            save.Runner,
+            new FakeFolderPicker(VkExportBuilder.New()
+                .Conversation("222", "Sam Ruiz", c => c
+                    .Message(1, DateTimeOffset.FromUnixTimeSeconds(1577882096), VkAuthor.You, "hello"))
+                .Write(save.ExportFolder("vk"))));
+
+        await page.BrowseCommand.ExecuteAsync(null);
+
+        Assert.True(page.AsksForAccount);
+        Assert.Contains("VKontakte", page.AccountQuestion, StringComparison.Ordinal);
+    }
+
+    /// <summary>A Telegram export states its account, so nothing is asked.</summary>
+    [Fact]
+    public async Task An_export_that_names_its_account_is_not_asked_about()
+    {
+        using var save = new TempSave();
+
+        var page = new ImportViewModel(
+            save.Runner, new FakeFolderPicker(save.WriteSampleExport()));
+
+        await page.BrowseCommand.ExecuteAsync(null);
+
+        Assert.False(page.AsksForAccount);
+    }
+
+    /// <summary>What the user types is what the owner becomes.</summary>
+    [Fact]
+    public async Task The_account_the_user_gives_is_used_for_the_import()
+    {
+        using var save = new TempSave();
+
+        var page = new ImportViewModel(
+            save.Runner,
+            new FakeFolderPicker(VkExportBuilder.New()
+                .Conversation("222", "Sam Ruiz", c => c
+                    .Message(1, DateTimeOffset.FromUnixTimeSeconds(1577882096), VkAuthor.You, "hello"))
+                .Write(save.ExportFolder("vk"))));
+
+        await page.BrowseCommand.ExecuteAsync(null);
+
+        page.OwnerAccountId = "999";
+        await page.ImportCommand.ExecuteAsync(null);
+
+        Assert.Null(page.Error);
+
+        var owner = save.Queries.Identities()
+            .Single(i => i.Platform == "vk");
+
+        Assert.Equal("999", owner.SourceIdentityId);
+        Assert.False(owner.IsSynthetic);
     }
 
     private sealed class FakeFolderPicker(string? folder) : IFolderPicker

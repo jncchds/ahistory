@@ -93,10 +93,12 @@ public sealed class VkImporter : IPlatformImporter
             AccountName: null,
             FileCount: files.Length,
             Note: "VK archives do not state which account they belong to. Messages with no sender "
-                + "link are treated as yours, which is how VK marks them.");
+                + "link are treated as yours, which is how VK marks them — tell the app your VK id "
+                + "and those messages become you rather than a placeholder.",
+            AccountIdIsGuess: true);
     }
 
-    public void Read(string path, IImportSink sink)
+    public void Read(string path, IImportSink sink, ImportOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sink);
 
@@ -104,10 +106,7 @@ public sealed class VkImporter : IPlatformImporter
             ?? throw new InvalidDataException(
                 $"'{path}' has no messages folder. Point at the folder VK's archive unpacked into.");
 
-        // The account is never named in the archive, so it gets a fixed identity rather than an
-        // invented one. Every message VK left unattributed is this person, which is what makes
-        // the two sides of a conversation distinguishable at all.
-        var owner = new NormalizedIdentity(PlatformId, "self", Handle: null, "You", IsSynthetic: false);
+        var owner = Owner(path, options?.OwnerAccountId);
         sink.OnOwner(owner);
 
         var context = BrowsingContext.New(Configuration.Default);
@@ -116,6 +115,35 @@ public sealed class VkImporter : IPlatformImporter
         {
             ReadConversation(context, peer, owner, sink);
         }
+    }
+
+    /// <summary>
+    /// Who "me" is: what the user said, or a placeholder flagged as the guess it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The archive never names its account, and every message VK left unattributed is this person —
+    /// which is the only thing making the two sides of a conversation distinguishable at all. So an
+    /// owner there must be, but not a confident one.
+    /// </para>
+    /// <para>
+    /// The placeholder is per-archive rather than a single global <c>vk:self</c>, so two archives
+    /// from two accounts do not collapse into one person, and it is synthetic, so it appears in the
+    /// merge UI among the accounts identified by name and can be detached later. Marked as stated
+    /// when the user supplies their own id, because then it is.
+    /// </para>
+    /// </remarks>
+    private static NormalizedIdentity Owner(string path, string? stated)
+    {
+        if (!string.IsNullOrWhiteSpace(stated))
+        {
+            return new NormalizedIdentity(PlatformId, stated, Handle: null, "You", IsSynthetic: false);
+        }
+
+        var placeholder = "folder:" + new DirectoryInfo(path.TrimEnd(Path.DirectorySeparatorChar)).Name;
+
+        return new NormalizedIdentity(
+            PlatformId, placeholder, Handle: null, "You (account not identified)", IsSynthetic: true);
     }
 
     /// <summary>The <c>messages</c> folder, whether it was pointed at directly or via its parent.</summary>

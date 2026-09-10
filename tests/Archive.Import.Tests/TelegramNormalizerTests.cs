@@ -1,21 +1,22 @@
 using System.Text.Json;
+using Archive.Import.Synthetic;
 using Archive.Import.Telegram;
 
 namespace Archive.Import.Tests;
 
 /// <summary>
-/// One test per trap in §2, each against a fixture that reproduces the shape a real export uses.
+/// One test per trap in §2, each against an export shape built to reproduce it (Exports).
 /// </summary>
 public sealed class TelegramNormalizerTests
 {
     /// <summary>
-    /// §2's first trap. The fixture's `text` field says "WRONG" precisely so that a regression
+    /// §2's first trap. The built `text` field says "WRONG" precisely so that a regression
     /// reading it produces an obviously wrong value rather than a plausible one.
     /// </summary>
     [Fact]
     public void Plaintext_comes_from_entities_and_never_from_the_text_field()
     {
-        var messages = Normalize("text-string-vs-entities");
+        var messages = Normalize(Exports.TextStringVsEntities());
 
         Assert.Equal("see https://example.org for the map", messages[0].Plaintext);
         Assert.DoesNotContain("WRONG", messages[0].Plaintext, StringComparison.Ordinal);
@@ -24,7 +25,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void The_array_form_of_text_is_also_ignored()
     {
-        var messages = Normalize("text-string-vs-entities");
+        var messages = Normalize(Exports.TextStringVsEntities());
 
         Assert.Equal("mixed array form", messages[1].Plaintext);
     }
@@ -32,7 +33,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Entities_are_preserved_for_rendering()
     {
-        var messages = Normalize("text-string-vs-entities");
+        var messages = Normalize(Exports.TextStringVsEntities());
 
         Assert.NotNull(messages[0].EntitiesJson);
         Assert.Contains("\"link\"", messages[0].EntitiesJson!, StringComparison.Ordinal);
@@ -46,7 +47,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Service_messages_are_attributed_to_the_actor_and_keep_their_action()
     {
-        var messages = Normalize("service-messages");
+        var messages = Normalize(Exports.ServiceMessages());
 
         Assert.All(messages, m => Assert.Equal("service", m.Kind));
         Assert.Equal(["create_group", "invite_members", "phone_call"], messages.Select(m => m.ServiceAction));
@@ -57,17 +58,17 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void No_identity_is_ever_named_after_a_service_action()
     {
-        var messages = Normalize("service-messages");
+        var messages = Normalize(Exports.ServiceMessages());
         var names = messages.Select(m => m.Sender!.DisplayName).Distinct();
 
         Assert.DoesNotContain("phone_call", names);
-        Assert.Equal(["Kirill", "Sam Ruiz"], names.Order());
+        Assert.Equal(["Owner Synthetic", "Sam Ruiz"], names.Order());
     }
 
     [Fact]
     public void Identity_prefixes_are_stripped()
     {
-        var messages = Normalize("prefixed-ids");
+        var messages = Normalize(Exports.PrefixedIds());
 
         Assert.Equal(["5001", "900", "5003"], messages.Select(m => m.Sender!.SourceIdentityId));
         Assert.All(messages, m => Assert.False(m.Sender!.IsSynthetic));
@@ -80,7 +81,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void An_unknown_identity_prefix_is_fatal()
     {
-        var exception = Assert.Throws<UnknownIdentityPrefixException>(() => Normalize("unknown-prefix"));
+        var exception = Assert.Throws<UnknownIdentityPrefixException>(() => Normalize(Exports.UnknownPrefix()));
 
         Assert.Equal("spaceship42", exception.Value);
     }
@@ -88,7 +89,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void A_sender_with_no_id_becomes_a_synthetic_identity()
     {
-        var message = Assert.Single(Normalize("name-only-sender"));
+        var message = Assert.Single(Normalize(Exports.NameOnlySender()));
 
         Assert.True(message.Sender!.IsSynthetic);
         Assert.Null(message.Sender.SourceIdentityId);
@@ -98,7 +99,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Saved_messages_are_a_conversation_with_yourself()
     {
-        var chat = ReadChats("saved-messages").Single();
+        var chat = ReadChats(Exports.SavedMessages()).Single();
 
         Assert.Equal("saved", chat.ThreadKind);
     }
@@ -106,7 +107,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Timestamps_use_unixtime_and_record_the_senders_offset()
     {
-        var message = Normalize("group-and-dm")[0];
+        var message = Normalize(Exports.GroupAndDm())[0];
 
         Assert.Equal(1554221523, message.SentAtUnix);
         Assert.StartsWith("2019-04-02T16:12:03", message.SentAtUtc, StringComparison.Ordinal);
@@ -119,7 +120,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Replies_are_recorded_as_a_uid_in_the_same_thread()
     {
-        var messages = Normalize("group-and-dm");
+        var messages = Normalize(Exports.GroupAndDm());
 
         Assert.Equal("tg/100/1", messages[1].ReplyToUid);
         Assert.Null(messages[0].ReplyToUid);
@@ -128,7 +129,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void An_edit_is_recorded()
     {
-        var message = Assert.Single(Normalize("reactions-and-edits"));
+        var message = Assert.Single(Normalize(Exports.ReactionsAndEdits()));
 
         Assert.NotNull(message.EditedAtUtc);
         Assert.StartsWith("2019-03-04T", message.EditedAtUtc!, StringComparison.Ordinal);
@@ -141,7 +142,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Reaction_counts_sum_to_the_reported_total()
     {
-        var message = Assert.Single(Normalize("reactions-and-edits"));
+        var message = Assert.Single(Normalize(Exports.ReactionsAndEdits()));
 
         var thumbs = message.Reactions.Where(r => r.Emoji == "👍").ToArray();
 
@@ -153,7 +154,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void A_custom_emoji_reaction_keeps_its_document_id()
     {
-        var message = Assert.Single(Normalize("reactions-and-edits"));
+        var message = Assert.Single(Normalize(Exports.ReactionsAndEdits()));
 
         var custom = Assert.Single(message.Reactions, r => r.CustomEmojiId is not null);
 
@@ -163,9 +164,9 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Forwarded_messages_keep_their_origin()
     {
-        var messages = Normalize("forwards");
+        var messages = Normalize(Exports.Forwards());
 
-        Assert.Equal("Alex", messages[0].ForwardedFrom);
+        Assert.Equal("Alex Novak", messages[0].ForwardedFrom);
         Assert.Null(messages[1].ForwardedFrom);
         Assert.Equal("@gif", messages[3].ViaBot);
     }
@@ -177,7 +178,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void The_same_sticker_in_two_messages_points_at_one_export_path()
     {
-        var messages = Normalize("forwards");
+        var messages = Normalize(Exports.Forwards());
 
         var first = Assert.Single(messages[1].Media);
         var second = Assert.Single(messages[2].Media);
@@ -190,7 +191,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void A_video_carries_its_thumbnail_as_a_second_attachment()
     {
-        var media = Normalize("forwards")[3].Media;
+        var media = Normalize(Exports.Forwards())[3].Media;
 
         Assert.Equal(2, media.Count);
         Assert.Equal("animation", media[0].MediaKind);
@@ -205,7 +206,7 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void Media_the_export_omitted_is_recorded_with_a_reason()
     {
-        var messages = Normalize("missing-media");
+        var messages = Normalize(Exports.MissingMedia());
 
         var photo = Assert.Single(messages[0].Media);
         Assert.NotNull(photo.MissingReason);
@@ -221,36 +222,36 @@ public sealed class TelegramNormalizerTests
     [Fact]
     public void The_content_hash_changes_with_the_text_and_not_with_anything_else()
     {
-        var messages = Normalize("text-string-vs-entities");
+        var messages = Normalize(Exports.TextStringVsEntities());
 
         Assert.NotEqual(messages[0].ContentHash, messages[1].ContentHash);
 
         // Re-normalizing the identical input must produce the identical hash, or re-import can
         // never distinguish "already have this" from "this was edited".
-        Assert.Equal(messages[0].ContentHash, Normalize("text-string-vs-entities")[0].ContentHash);
+        Assert.Equal(messages[0].ContentHash, Normalize(Exports.TextStringVsEntities())[0].ContentHash);
     }
 
     [Fact]
     public void Uids_are_stable_and_scoped_to_the_thread()
     {
-        var messages = Normalize("group-and-dm");
+        var messages = Normalize(Exports.GroupAndDm());
 
         Assert.Equal("tg/100/1", messages[0].Uid);
         Assert.Equal("tg/200/11", messages[2].Uid);
     }
 
-    private static List<NormalizedMessage> Normalize(string fixture)
+    private static List<NormalizedMessage> Normalize(TelegramExportBuilder export)
     {
         var sink = new NormalizingSink();
-        using var stream = Fixtures.OpenResultJson(fixture);
+        using var stream = Exports.Stream(export);
         TelegramExportReader.Read(stream, sink);
         return sink.Messages;
     }
 
-    private static List<TelegramChatHeader> ReadChats(string fixture)
+    private static List<TelegramChatHeader> ReadChats(TelegramExportBuilder export)
     {
         var sink = new NormalizingSink();
-        using var stream = Fixtures.OpenResultJson(fixture);
+        using var stream = Exports.Stream(export);
         TelegramExportReader.Read(stream, sink);
         return sink.Chats;
     }

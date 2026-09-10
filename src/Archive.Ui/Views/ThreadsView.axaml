@@ -1,78 +1,183 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:controls="clr-namespace:Archive.Ui.Controls"
              xmlns:data="clr-namespace:Archive.Data;assembly=Archive.Data"
              x:Class="Archive.Ui.Views.ThreadsView"
              x:DataType="vm:ThreadsViewModel">
 
-  <UserControl.Styles>
-    <Style Selector="UserControl"><Setter Property="Padding" Value="22,18" /></Style>
-  </UserControl.Styles>
+  <UserControl.DataTemplates>
 
-  <DockPanel>
+    <DataTemplate DataType="vm:ThreadMessageItem">
+      <!--
+        Alignment carries the speaker, as in any messaging app: yours on the right, everyone
+        else's on the left. In a group that is not enough on its own — ten people all land on the
+        same side — so the first message of each person's run gets their avatar and name, coloured
+        from the name so the same person is the same colour every time.
+      -->
+      <Grid Margin="0,1" HorizontalAlignment="{Binding Alignment}" MaxWidth="620"
+            ColumnDefinitions="Auto,8,*">
 
-    <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Threads" />
+        <!-- Held open even when the avatar is hidden, so a run stays aligned under its label. -->
+        <controls:Avatar Grid.Column="0" Width="30" Height="30" VerticalAlignment="Top"
+                         IsVisible="{Binding ShowsAvatar}"
+                         DisplayName="{Binding Row.SenderLabel}" />
 
-    <TextBlock DockPanel.Dock="Top" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,0,0,12"
-               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
-               Text="{Binding Error}" />
+        <Border Grid.Column="2" Classes="bubble" Classes.outgoing="{Binding IsOutgoing}" Padding="12,8">
+          <StackPanel Spacing="3">
 
-    <Grid ColumnDefinitions="260,16,*">
+            <TextBlock FontSize="12" FontWeight="SemiBold" IsVisible="{Binding ShowsSender}"
+                       Foreground="{DynamicResource AccentBrush}"
+                       Text="{Binding Row.SenderLabel}" />
 
-      <ListBox Grid.Column="0" ItemsSource="{Binding Threads}" SelectedItem="{Binding SelectedThread}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="data:ThreadRow">
-            <StackPanel Margin="0,4">
-              <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Classes="subtle" FontSize="11">
-                <Run Text="{Binding Kind}" />
-                <Run Text="·" />
-                <Run Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
-              </TextBlock>
-            </StackPanel>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+            <!-- §2: a service message is an event, not something anyone said. -->
+            <Border Background="{DynamicResource ElevatedBrush}" CornerRadius="3" Padding="6,1"
+                    HorizontalAlignment="Left" IsVisible="{Binding IsService}">
+              <TextBlock FontSize="10" Text="{Binding Row.ServiceAction}" />
+            </Border>
 
-      <DockPanel Grid.Column="2">
+            <TextBlock TextWrapping="Wrap" Text="{Binding Row.Plaintext}"
+                       IsVisible="{Binding Row.Plaintext, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-        <!-- Newest first, so "load older" belongs at the bottom. -->
-        <Button DockPanel.Dock="Bottom" Content="Load older messages" Margin="0,8,0,0"
-                HorizontalAlignment="Center"
-                IsVisible="{Binding HasMore}" Command="{Binding LoadMoreCommand}" />
+            <!-- A message whose content is an attachment still has to look like something. -->
+            <TextBlock Classes="faint" IsVisible="{Binding Row.MediaCount}"
+                       Text="{Binding Row.MediaCount, StringFormat='{}{0} attachment(s)'}" />
 
-        <ListBox ItemsSource="{Binding Messages}">
+            <TextBlock Classes="faint" HorizontalAlignment="Right" Text="{Binding Timestamp}" />
+
+          </StackPanel>
+        </Border>
+      </Grid>
+    </DataTemplate>
+
+  </UserControl.DataTemplates>
+
+  <Grid ColumnDefinitions="300,*,Auto">
+
+    <!-- The conversation list, as Telegram's second column. -->
+    <Border Grid.Column="0" Background="{DynamicResource ListBrush}">
+      <DockPanel>
+        <TextBox DockPanel.Dock="Top" Margin="10" PlaceholderText="Filter conversations"
+                 Text="{Binding ThreadFilter}" />
+
+        <ListBox Classes="rows" ItemsSource="{Binding Threads}" SelectedItem="{Binding SelectedThread}">
           <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="data:MessageRow">
-              <StackPanel Margin="0,6">
+            <DataTemplate x:DataType="data:ThreadRow">
+              <Grid ColumnDefinitions="Auto,10,*">
+                <controls:Avatar Grid.Column="0" DisplayName="{Binding DisplayTitle}" />
 
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <TextBlock FontWeight="SemiBold" FontSize="12"
-                             Text="{Binding SenderName}" />
-                  <TextBlock Classes="subtle" FontSize="11" Text="{Binding SentAtUtc}" />
-                  <!-- Service messages are events, not things anyone said (§2). -->
-                  <Border Background="#33808080" CornerRadius="3" Padding="4,0"
-                          IsVisible="{Binding ServiceAction, Converter={x:Static ObjectConverters.IsNotNull}}">
-                    <TextBlock FontSize="10" VerticalAlignment="Center" Text="{Binding ServiceAction}" />
-                  </Border>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                  <TextBlock Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis"
+                             FontWeight="SemiBold" FontSize="13" />
+                  <TextBlock Classes="faint">
+                    <Run Text="{Binding KindLabel}" />
+                    <Run Text="·" />
+                    <Run Text="{Binding MessageCount, StringFormat='{}{0:N0} messages'}" />
+                  </TextBlock>
+                  <!-- Who is in the room, for the rooms where that is what identifies them. -->
+                  <TextBlock Classes="faint" TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding IsGroup}"
+                             Text="{Binding ParticipantPreview}" />
                 </StackPanel>
-
-                <TextBlock TextWrapping="Wrap" Text="{Binding Plaintext}" />
-
-                <!-- A message whose content is an attachment still has to look like something. -->
-                <TextBlock Classes="subtle" FontSize="11"
-                           IsVisible="{Binding MediaCount}"
-                           Text="{Binding MediaCount, StringFormat='{}{0} attachment(s)'}" />
-
-              </StackPanel>
+              </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
-
       </DockPanel>
+    </Border>
 
-    </Grid>
+    <!-- The conversation itself. -->
+    <DockPanel Grid.Column="1" Background="{DynamicResource ConversationBrush}">
 
-  </DockPanel>
+      <Border DockPanel.Dock="Top" Background="{DynamicResource ListBrush}" Padding="16,10"
+              IsVisible="{Binding SelectedThread, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <controls:Avatar Width="38" Height="38"
+                           DisplayName="{Binding SelectedThread.DisplayTitle}" />
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock FontWeight="SemiBold" Text="{Binding SelectedThread.DisplayTitle}" />
+            <TextBlock Classes="faint">
+              <Run Text="{Binding SelectedThread.KindLabel}" />
+              <Run Text="·" />
+              <Run Text="{Binding SelectedThread.MessageCount, StringFormat='{}{0:N0} messages'}" />
+            </TextBlock>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+                 Margin="16,10,16,0"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+
+      <!-- Oldest first, so "load older" belongs at the top. -->
+      <Button DockPanel.Dock="Top" Content="Load older" Margin="0,10,0,4"
+              HorizontalAlignment="Center"
+              IsVisible="{Binding HasMore}" Command="{Binding LoadMoreCommand}" />
+
+      <!-- Virtualized: a group can run to tens of thousands of messages. -->
+      <ItemsControl ItemsSource="{Binding Messages}" Margin="16,10,16,0">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.Template>
+          <ControlTemplate>
+            <ScrollViewer>
+              <ItemsPresenter />
+            </ScrollViewer>
+          </ControlTemplate>
+        </ItemsControl.Template>
+      </ItemsControl>
+
+    </DockPanel>
+
+    <!--
+      Who is in the room. Only for conversations where that is a question — a direct thread's
+      roster is you and them, which the header already said.
+    -->
+    <Border Grid.Column="2" Width="220" Background="{DynamicResource ListBrush}"
+            IsVisible="{Binding SelectedThread.IsGroup, FallbackValue=False}">
+      <DockPanel Margin="12,10">
+        <TextBlock DockPanel.Dock="Top" Classes="subtle" Margin="0,0,0,8"
+                   Text="{Binding Participants.Count, StringFormat='{}{0} participants'}" />
+
+        <ListBox Classes="rows" ItemsSource="{Binding Participants}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="data:ThreadParticipantRow">
+              <Grid ColumnDefinitions="Auto,8,*" Margin="0,2">
+                <controls:Avatar Grid.Column="0" Width="26" Height="26"
+                                 DisplayName="{Binding DisplayName}" />
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock FontSize="12" TextTrimming="CharacterEllipsis"
+                               Text="{Binding DisplayName}" />
+                    <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3"
+                            Padding="4,0" IsVisible="{Binding IsOwner}">
+                      <TextBlock Text="you" FontSize="9" VerticalAlignment="Center" />
+                    </Border>
+                  </StackPanel>
+
+                  <!--
+                    The person this account is attributed to, when it differs from the account's
+                    own name. A group is where you notice the same human is in it twice under two
+                    accounts, which is the moment to merge them (§1).
+                  -->
+                  <TextBlock Classes="faint" FontSize="10" TextTrimming="CharacterEllipsis"
+                             Text="{Binding PersonName}" />
+
+                  <TextBlock Classes="faint" FontSize="10"
+                             Text="{Binding MessageCount, StringFormat='{}{0:N0} here'}" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+  </Grid>
 
 </UserControl>

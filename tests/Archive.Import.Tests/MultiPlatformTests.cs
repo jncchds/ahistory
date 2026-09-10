@@ -1,5 +1,3 @@
-using System.Buffers.Binary;
-using System.Text;
 using Archive.Import.Hangouts;
 using Archive.Import.Qip;
 using Archive.Import.Telegram;
@@ -13,52 +11,6 @@ namespace Archive.Import.Tests;
 /// </summary>
 public sealed class MultiPlatformTests
 {
-    private static string WriteQip(string name)
-    {
-        var history = Path.Combine(Fixtures.Temp(name), "12345678", "History");
-        System.IO.Directory.CreateDirectory(history);
-
-        var encoded = QipImporter.Encode("привет");
-        var uin = Encoding.ASCII.GetBytes("87654321");
-        var nick = Encoding.UTF8.GetBytes("Марина");
-
-        var headerLength = 0x2E + uin.Length + 2 + nick.Length;
-        var block = new byte[0x23 + encoded.Length];
-        var file = new byte[headerLength + block.Length];
-
-        file[0] = (byte)'Q';
-        file[1] = (byte)'H';
-        file[2] = (byte)'F';
-        // Both size fields measure what follows them — see QipImporterTests for the full layout.
-        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x04), file.Length - 8);
-        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x22), 1);
-        BinaryPrimitives.WriteInt16BigEndian(file.AsSpan(0x2C), (short)uin.Length);
-        uin.CopyTo(file.AsSpan(0x2E));
-        BinaryPrimitives.WriteInt16BigEndian(file.AsSpan(0x2E + uin.Length), (short)nick.Length);
-        nick.CopyTo(file.AsSpan(0x2E + uin.Length + 2));
-
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x00), 1);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x02), block.Length - 6);
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x06), 1);
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x08), 4);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x0A), 1);
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x0E), 2);
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x10), 4);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x12),
-            (int)new DateTimeOffset(2008, 5, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x16), 3);
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x18), 3);
-        block[0x1C] = 1;
-        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x1D), 4);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x1F), encoded.Length);
-        encoded.CopyTo(block.AsSpan(0x23));
-        block.CopyTo(file.AsSpan(headerLength));
-
-        File.WriteAllBytes(Path.Combine(history, "87654321.qhf"), file);
-
-        return history;
-    }
-
     /// <summary>Each importer recognizes only its own format.</summary>
     [Theory]
     [InlineData("telegram", typeof(TelegramImporter))]
@@ -68,9 +20,9 @@ public sealed class MultiPlatformTests
     {
         var folder = kind switch
         {
-            "telegram" => Fixtures.Directory("group-and-dm"),
-            "hangouts" => Path.Combine(Fixtures.Root, "hangouts", "simple"),
-            _ => Path.Combine(Fixtures.Root, "vk", "simple"),
+            "telegram" => Exports.WriteGroupAndDm("multi-detect-telegram"),
+            "hangouts" => Exports.Hangouts().Write(Fixtures.Temp("multi-detect-hangouts")),
+            _ => Exports.Vk().Write(Fixtures.Temp("multi-detect-vk")),
         };
 
         var match = new ImporterRegistry().Detect(folder);
@@ -82,7 +34,7 @@ public sealed class MultiPlatformTests
     [Fact]
     public void Qip_is_detected_from_its_binary_signature()
     {
-        var match = new ImporterRegistry().Detect(WriteQip("multi-qip-detect"));
+        var match = new ImporterRegistry().Detect(Exports.WriteQip(Fixtures.Temp("multi-qip-detect")));
 
         Assert.NotNull(match);
         Assert.IsType<QipImporter>(match!.Importer);
@@ -110,16 +62,16 @@ public sealed class MultiPlatformTests
     {
         using var save = new TempSave();
 
-        save.Import(Fixtures.Directory("group-and-dm"));
-        save.Import(Path.Combine(Fixtures.Root, "hangouts", "simple"));
-        save.Import(Path.Combine(Fixtures.Root, "vk", "simple"));
-        save.Import(WriteQip("multi-all"));
+        save.Import(Exports.WriteGroupAndDm("multi-telegram"));
+        save.Import(Exports.Hangouts().Write(Fixtures.Temp("multi-hangouts")));
+        save.Import(Exports.Vk().Write(Fixtures.Temp("multi-vk")));
+        save.Import(Exports.WriteQip(Fixtures.Temp("multi-all")));
 
         Assert.Equal(4, save.Scalar<long>("SELECT count(DISTINCT platform) FROM thread;"));
         Assert.Equal(4, save.Scalar<long>("SELECT count(DISTINCT platform) FROM import_source;"));
 
-        // Telegram 5, Hangouts 4, VK 4, QIP 1.
-        Assert.Equal(14, save.Scalar<long>("SELECT count(*) FROM message;"));
+        // Telegram 5, Hangouts 4, VK 4, QIP 3.
+        Assert.Equal(16, save.Scalar<long>("SELECT count(*) FROM message;"));
 
         // Everything is searchable regardless of which importer produced it.
         Assert.Equal(
@@ -140,9 +92,9 @@ public sealed class MultiPlatformTests
 
         var folder = kind switch
         {
-            "hangouts" => Path.Combine(Fixtures.Root, "hangouts", "simple"),
-            "vk" => Path.Combine(Fixtures.Root, "vk", "simple"),
-            _ => WriteQip($"multi-reimport-{kind}"),
+            "hangouts" => Exports.Hangouts().Write(Fixtures.Temp("multi-detect-hangouts")),
+            "vk" => Exports.Vk().Write(Fixtures.Temp($"multi-reimport-{kind}")),
+            _ => Exports.WriteQip(Fixtures.Temp($"multi-reimport-{kind}")),
         };
 
         save.Import(folder);
@@ -165,8 +117,8 @@ public sealed class MultiPlatformTests
     {
         using var save = new TempSave();
 
-        save.Import(Fixtures.Directory("group-and-dm"));
-        save.Import(Path.Combine(Fixtures.Root, "hangouts", "simple"));
+        save.Import(Exports.WriteGroupAndDm("multi-telegram"));
+        save.Import(Exports.Hangouts().Write(Fixtures.Temp("multi-hangouts")));
 
         var telegramSam = save.Scalar<string>(
             "SELECT id FROM identity WHERE platform = 'telegram' AND display_name = 'Sam Ruiz';")!;

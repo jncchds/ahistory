@@ -11,13 +11,13 @@ namespace Archive.Import.Tests;
 /// archive itself, while being far more likely to be copied somewhere else — so the rule is
 /// counts, identifiers, durations and error types; never content, never names.
 ///
-/// This runs a real import through a capturing logger and looks for the fixture's own words. It
+/// This runs a real import through a capturing logger and looks for the export's own words. It
 /// is worth more than the rule written down anywhere, because the failure mode is someone adding
 /// one helpful-looking `{ChatName}` to a message six months from now.
 /// </remarks>
 public sealed class LoggingPrivacyTests
 {
-    /// <summary>Distinctive strings from the fixture that must never reach a log.</summary>
+    /// <summary>Distinctive strings from the export that must never reach a log.</summary>
     private static readonly string[] Forbidden =
     [
         // Message text.
@@ -48,7 +48,7 @@ public sealed class LoggingPrivacyTests
             var runner = new ImportRunner(
                 save.Database, save.MediaStore, factory.CreateLogger<ImportRunner>());
 
-            runner.Run(Fixtures.Directory("group-and-dm"));
+            runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()));
         }
 
         var log = capture.Text;
@@ -79,7 +79,7 @@ public sealed class LoggingPrivacyTests
             var runner = new ImportRunner(
                 save.Database, save.MediaStore, factory.CreateLogger<ImportRunner>());
 
-            runner.Run(Fixtures.Directory("group-and-dm"));
+            runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()));
         }
 
         var log = capture.Text;
@@ -108,7 +108,7 @@ public sealed class LoggingPrivacyTests
             var runner = new ImportRunner(
                 save.Database, save.MediaStore, factory.CreateLogger<ImportRunner>());
 
-            Assert.ThrowsAny<Exception>(() => runner.Run(Fixtures.Directory("unknown-prefix")));
+            Assert.ThrowsAny<Exception>(() => runner.Run(save.Export("unknown-prefix", Exports.UnknownPrefix())));
         }
 
         var log = capture.Text;

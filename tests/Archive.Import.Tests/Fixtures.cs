@@ -1,54 +1,23 @@
 namespace Archive.Import.Tests;
 
 /// <summary>
-/// Locates the golden Telegram export fixtures in <c>tests/fixtures/telegram</c>.
+/// Throwaway folders for the exports a test builds.
 /// </summary>
 /// <remarks>
-/// Found by walking up from the test assembly's output directory to the solution file, because
-/// the working directory differs between `dotnet test`, an IDE runner and CI. The fixtures are
-/// deliberately real files on disk rather than embedded strings: the importer's job is to read an
-/// export folder, and a test that hands it a string would not exercise that at all.
+/// Outside the repository, deliberately. An export is what someone's private correspondence looks
+/// like on disk, and a folder of them inside a source tree is one careless copy away from being a
+/// real one — so the shapes live in code (<see cref="Exports"/>) and the files exist only while a
+/// test runs. <c>NoArchiveDataInTheRepositoryTests</c> is what keeps that true.
 /// </remarks>
 internal static class Fixtures
 {
-    /// <summary>The tests/fixtures folder.</summary>
-    internal static string Root => Path.Combine(RepoRoot(), "tests", "fixtures");
-
-    /// <summary>An empty throwaway folder, for fixtures a test builds itself.</summary>
+    /// <summary>An empty throwaway folder, named after the test that asked for it.</summary>
     internal static string Temp(string name)
     {
         var folder = Path.Combine(Path.GetTempPath(), "ahistory-tests", name, Guid.NewGuid().ToString("N"));
 
-        // Qualified: this class has its own Directory method, which would otherwise win.
-        System.IO.Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(folder);
 
         return folder;
-    }
-
-    internal static string Directory(string name) =>
-        Path.Combine(RepoRoot(), "tests", "fixtures", "telegram", name);
-
-    internal static string ResultJson(string name) =>
-        Path.Combine(Directory(name), "result.json");
-
-    internal static Stream OpenResultJson(string name) =>
-        File.OpenRead(ResultJson(name));
-
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (dir is not null)
-        {
-            if (dir.EnumerateFiles("*.slnx").Any() || dir.EnumerateFiles("*.sln").Any())
-            {
-                return dir.FullName;
-            }
-
-            dir = dir.Parent;
-        }
-
-        throw new InvalidOperationException(
-            $"No .slnx or .sln found walking up from '{AppContext.BaseDirectory}'.");
     }
 }

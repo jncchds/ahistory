@@ -66,7 +66,10 @@ with something demonstrable, not with a half-wired layer.
 
 **P5 — A save is one person's archive.** Every import belongs to the same human; a
 platform account the importer has not seen before attaches to the existing owner rather than
-becoming a second one. This is what makes "me" definite for the knowledge base, and it is what
+becoming a second one. **An owner is never invented** (D25): a format that does not state its
+account — VK, QIP — says so, offers what it found, and asks. What it cannot do is make one up and
+store it as though the export had named it, which left a user's real account arriving as an
+ordinary contact and their own history file reading as a conversation with themselves (D26). This is what makes "me" definite for the knowledge base, and it is what
 keeps message uids unambiguous — Telegram private-chat ids are relative to whoever exported
 them, so two different people's archives in one save would collide. An archive someone gave you
 belongs in its own save (§9, decisions.md D13).
@@ -145,6 +148,23 @@ fakes as nested classes. Method names are snake_case sentences
 (`Migration_is_idempotent`, `Deleting_a_thread_removes_its_messages_from_the_index`). Data tests
 use a real SQLite **file** in a temp directory, never `:memory:`, because WAL, foreign keys and
 cascade behaviour differ.
+
+**Never call `SqliteConnection.ClearAllPools()`.** A test fixture has to release its pooled handles
+before deleting its directory — on Windows the delete fails with a sharing violation otherwise —
+but `ClearAllPools` is process-wide and xUnit runs test classes in parallel in one process, so it
+disposes the `sqlite3` handle of a connection another test is in the middle of using. That surfaced
+as an `ObjectDisposedException` thrown from somewhere unrelated, roughly once every few full runs:
+the kind of failure that gets re-run until it passes and never diagnosed. Use
+`SqliteConnection.ClearPool(connection)`, which is scoped to one connection string.
+
+**No archive data in the repository** (decisions.md D30). Nothing shaped like a chat export is
+committed — not a `result.json`, not a `.qhf`, not a VK message page, however synthetic. A file in
+the source tree that looks like an export is one careless copy away from being somebody's real
+correspondence, which is the same thing P6 refuses to let into a log. Export *shapes* are built in
+code by `Archive.Import.Synthetic` (`TelegramExportBuilder`, `HangoutsExportBuilder`,
+`VkExportBuilder`, `QipHistoryBuilder`) and written to a temp folder when a test runs; tests still
+read real folders, because that is most of what an importer does. `NoArchiveDataInTheRepositoryTests`
+enforces it. A real archive for local testing goes in `scratch/`, which is ignored.
 
 UI tests live in `Archive.Ui.Tests`. Most are plain view-model tests with no window at all; the
 few that need a real Application use `Headless.RunAsync`, which drives Avalonia's headless

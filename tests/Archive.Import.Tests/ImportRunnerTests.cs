@@ -7,7 +7,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        var stats = save.ImportFixture("group-and-dm");
+        var stats = save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(5, stats.MessagesSeen);
         Assert.Equal(5, stats.MessagesInserted);
@@ -26,10 +26,10 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM person WHERE is_owner = 1;"));
-        Assert.Equal("Kirill Chekanov", save.Scalar<string>("SELECT display_name FROM person WHERE is_owner = 1;"));
+        Assert.Equal("Owner Synthetic", save.Scalar<string>("SELECT display_name FROM person WHERE is_owner = 1;"));
 
         Assert.Equal("seed", save.Scalar<string>("""
             SELECT confidence FROM identity_person
@@ -42,7 +42,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         var identities = save.Scalar<long>("SELECT count(*) FROM identity;");
         var links = save.Scalar<long>("SELECT count(*) FROM identity_person;");
@@ -65,11 +65,11 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
         var before = save.Digest();
         var mediaBefore = save.MediaFiles().Length;
 
-        var second = save.ImportFixture("group-and-dm");
+        var second = save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(before, save.Digest());
         Assert.Equal(mediaBefore, save.MediaFiles().Length);
@@ -89,8 +89,8 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(2, save.Scalar<long>("SELECT count(*) FROM import;"));
 
@@ -195,7 +195,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("group-and-dm");
+        save.Import("group-and-dm", Exports.GroupAndDm());
 
         Assert.Equal(
             save.Scalar<long>("SELECT count(*) FROM message;"),
@@ -210,7 +210,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        var stats = save.ImportFixture("forwards");
+        var stats = save.Import(Exports.WriteForwards(save.ExportFolder("forwards")));
 
         Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM media WHERE media_kind = 'sticker';"));
         Assert.Equal(2, save.Scalar<long>("""
@@ -231,7 +231,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        var stats = save.ImportFixture("missing-media");
+        var stats = save.Import("missing-media", Exports.MissingMedia());
 
         Assert.Equal(2, stats.MessagesInserted);
         Assert.Equal(2, stats.MediaMissing);
@@ -247,7 +247,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        var stats = save.ImportFixture("multi-file");
+        var stats = save.Import(Exports.WriteMultiFile(save.ExportFolder("multi-file")));
 
         Assert.Equal(2, stats.MessagesInserted);
         Assert.Equal(1, save.Scalar<long>("SELECT count(*) FROM import;"));
@@ -259,7 +259,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        save.ImportFixture("service-messages");
+        save.Import("service-messages", Exports.ServiceMessages());
 
         Assert.Equal(0, save.Scalar<long>("SELECT count(*) FROM person WHERE display_name LIKE '%phone_call%';"));
         Assert.Equal(3, save.Scalar<long>("SELECT count(*) FROM message WHERE kind = 'service';"));
@@ -286,7 +286,7 @@ public sealed class ImportRunnerTests
     {
         using var save = new TempSave();
 
-        Assert.ThrowsAny<Exception>(() => save.ImportFixture("unknown-prefix"));
+        Assert.ThrowsAny<Exception>(() => save.Import("unknown-prefix", Exports.UnknownPrefix()));
 
         Assert.Equal("failed", save.Scalar<string>("SELECT status FROM import;"));
         Assert.Contains("spaceship42", save.Scalar<string>("SELECT last_error FROM import;")!, StringComparison.Ordinal);

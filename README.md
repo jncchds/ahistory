@@ -59,6 +59,13 @@ for a new export.
 
 **Group messages are stored once.** A contact's view is their DM thread unioned with the group
 messages they sent — with surrounding context, because an isolated group line reads as nonsense.
+The group itself is readable as a group on the Threads page: who was in it, whether or not they
+ever spoke, and who said what.
+
+**Merging is suggested, never automatic.** The app pairs up accounts carrying the same name across
+platforms and offers them; you decide. It errs towards missing a pair rather than proposing a wrong
+one: an under-merge is one click to fix, and an over-merge makes everything one person said into
+something another person said.
 
 ## Supported sources
 
@@ -88,11 +95,21 @@ they cannot confirm one.
 Export from Telegram Desktop as **JSON**, not HTML, and keep the whole export folder together —
 the media files are referenced by relative path.
 
-For QIP, keep the folder QIP itself used: `<your own UIN>/History/<contact>.qhf`. A `.qhf` file
-names only the contact, so the folder above `History` is the only thing that says which side of the
-conversation is you. Point at a bare pile of `.qhf` files and they still import with the
-right side of each message intact, but "me" becomes a placeholder that will not line up with your
-account from any other import.
+**Formats that do not say who you are will ask.** VK's archive never names its account, and a QIP
+`.qhf` names only the contact — so the app tells you it does not know, offers whatever it found,
+and takes your answer. Leave it blank and your own messages still land on the right side of every
+conversation, but "me" becomes a placeholder that will not line up with you on any other platform;
+it shows up under "identified by name only" on the People page, where you can attribute it later.
+
+For QIP, keep the folder QIP itself used: `<your own UIN>/History/<contact>.qhf`. That numeric
+folder above `History` is the only thing in an export that says which UIN is yours. A history file
+named after your own UIN is not a contact — it is messages you sent yourself, or authorization
+events — and it is imported as **Saved messages**, the same as Telegram's.
+
+`.ahf` files are QIP's archived history. This app does not read them: their layout has never been
+confirmed against real files, and guessing at one is how the `.qhf` reader started out wrong. A
+folder of them is recognized and refused by name rather than being called unreadable, and a folder
+that mixes the two imports the `.qhf` files and tells you what it skipped.
 
 ## Build and run
 
@@ -147,14 +164,17 @@ src/
   Archive.Core      domain records and options contracts. Depends on nothing.
   Archive.Data      connections, pragmas, migrations, EF mapping, raw-SQL queries
   Archive.Media     content-addressed blob store
-  Archive.Import    one reader per platform, normalizer, committer
+  Archive.Import    one reader per platform, normalizer, committer, export builders
   Archive.Logging   logging setup shared by both heads
   Archive.Cli       headless init/import — how the importers are proven without a UI
   Archive.Ui        Avalonia views and view models
   Archive.Desktop   the thin desktop head
-tests/
-  fixtures/         golden export fixtures, one per parser trap, per platform
 ```
+
+**No chat data is committed here.** Export shapes are built in code by `Archive.Import.Synthetic`
+and written to a temporary folder when a test runs, because a file in the source tree that looks
+like somebody's correspondence is one careless copy away from being somebody's correspondence. A
+test enforces it; a real archive for local testing goes in `scratch/`, which is ignored.
 
 `Core` depends on nothing, everything depends on `Core`, the heads depend on everything —
 enforced by `SolutionLayoutTests` rather than by convention. Shared build settings live in

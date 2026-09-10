@@ -117,13 +117,28 @@ public sealed class ImportCommitter : IDisposable
     public ImportStats Stats { get; } = new();
 
     /// <summary>
-    /// Seeds the owner from the export's personal_information block (§2).
+    /// Seeds the owner from whatever the importer could establish about the account (§2).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// If an owner already exists — the normal case from the second import onward — the new
     /// identity is linked to them rather than creating a second owner. The partial unique index
     /// on person would reject a second one anyway; doing it here means the import succeeds
     /// instead of failing on a constraint.
+    /// </para>
+    /// <para>
+    /// <b>A guessed owner is recorded as a guess.</b> The link is 'seed' only when the export
+    /// stated its account; when the importer inferred it — VK and QIP never state one — it is
+    /// 'auto', exactly like any other identity the importer attached to a person on its own.
+    /// The identity itself carries <c>is_synthetic</c> for the same reason.
+    /// </para>
+    /// <para>
+    /// The difference is not cosmetic. 'seed' is what <c>IdentityMerger.Unmerge</c> refuses to
+    /// detach, on the grounds that the export itself said so — and applying that to a placeholder
+    /// left the archive permanently owned by an account nobody has, with no way back through the
+    /// UI. It also keeps the guess visible: the People page's "identified by name only" filter
+    /// reads <c>is_synthetic</c>, which is precisely where someone would go to fix it.
+    /// </para>
     /// </remarks>
     public void SeedOwner(NormalizedIdentity identity)
     {
@@ -132,6 +147,7 @@ public sealed class ImportCommitter : IDisposable
         var name = identity.DisplayName;
         var identityId = EnsureIdentity(identity);
         var ownerId = ExistingOwnerId();
+        var confidence = identity.IsSynthetic ? "auto" : "seed";
 
         if (ownerId is null)
         {
@@ -143,13 +159,17 @@ public sealed class ImportCommitter : IDisposable
                 """, ("$id", ownerId), ("$name", name), ("$now", _nowUtc));
         }
 
-        // 'seed' outranks the 'auto' link EnsureIdentity created: this identity is the owner
-        // because the export said so, not because the importer guessed.
+        // Whichever it is, it outranks the link EnsureIdentity just created against a person of
+        // this identity's own: this identity belongs to the archive's owner.
         Execute("""
             INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)
-            VALUES ($identity, $person, 'seed', $now)
-            ON CONFLICT (identity_id) DO UPDATE SET person_id = $person, confidence = 'seed';
-            """, ("$identity", identityId), ("$person", ownerId), ("$now", _nowUtc));
+            VALUES ($identity, $person, $confidence, $now)
+            ON CONFLICT (identity_id) DO UPDATE SET person_id = $person, confidence = $confidence;
+            """,
+            ("$identity", identityId),
+            ("$person", ownerId),
+            ("$confidence", confidence),
+            ("$now", _nowUtc));
 
         // EnsureIdentity gave this identity a person of its own a moment ago, and repointing it
         // at the owner just abandoned that one. Left behind, it shows up in the People list as a
@@ -174,6 +194,47 @@ public sealed class ImportCommitter : IDisposable
     /// Deterministic id for a thread, so the same export always produces the same row.
     /// </summary>
     public string ThreadId(string sourceThreadId) => $"{Platform}:{sourceThreadId}";
+
+    /// <summary>
+    /// Records who is in a thread, whether or not they ever said anything.
+    /// </summary>
+    /// <remarks>
+    /// <c>first_seen_unix</c> is the earliest message in the thread rather than the moment this
+    /// person appeared: the roster comes from the conversation's header, which carries no join
+    /// times. Zero would sort every stated participant to 1970 and make the column useless for the
+    /// senders whose value is real.
+    /// </remarks>
+    public void EnsureParticipants(
+        string sourceThreadId, IReadOnlyList<NormalizedIdentity> participants, long firstSeenUnix)
+    {
+        ArgumentNullException.ThrowIfNull(participants);
+
+        if (participants.Count == 0)
+        {
+            return;
+        }
+
+        var threadId = ThreadId(sourceThreadId);
+
+        foreach (var participant in participants)
+        {
+            var identityId = EnsureIdentity(participant);
+
+            if (!_participants.Add(ParticipantKey(threadId, identityId)))
+            {
+                continue;
+            }
+
+            Execute("""
+                INSERT INTO thread_participant (thread_id, identity_id, first_seen_unix)
+                VALUES ($thread, $identity, $unix)
+                ON CONFLICT (thread_id, identity_id) DO NOTHING;
+                """,
+                ("$thread", threadId),
+                ("$identity", identityId),
+                ("$unix", firstSeenUnix));
+        }
+    }
 
     public void EnsureThread(string sourceThreadId, string kind, string? title)
     {

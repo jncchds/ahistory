@@ -33,7 +33,9 @@ public sealed class UpgradeWindowTests
             DROP TABLE search_fts;
             DROP TABLE search_document;
             DROP TABLE save_provenance;
-            DELETE FROM schema_migration WHERE name IN ('003_search.sql', '004_provenance.sql');
+            DROP TABLE merge_dismissal;
+            DELETE FROM schema_migration
+            WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql');
             """;
         command.ExecuteNonQuery();
     }

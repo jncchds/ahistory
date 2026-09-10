@@ -24,7 +24,7 @@ public sealed class ImportConcurrencyTests
 
         // A batch size larger than the fixture guarantees every read below happens while the
         // importer's transaction is still open and uncommitted.
-        save.Runner.Run(Fixtures.Directory("group-and-dm"), _ =>
+        save.Runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()), _ =>
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -62,7 +62,7 @@ public sealed class ImportConcurrencyTests
 
         var countsSeen = new List<long>();
 
-        save.Runner.Run(Fixtures.Directory("group-and-dm"), _ =>
+        save.Runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()), _ =>
         {
             using var connection = save.Database.Open();
             using var command = connection.CreateCommand();
@@ -88,7 +88,7 @@ public sealed class ImportConcurrencyTests
 
         var countsSeen = new List<long>();
 
-        save.Runner.Run(Fixtures.Directory("group-and-dm"), _ =>
+        save.Runner.Run(save.Export("group-and-dm", Exports.GroupAndDm()), _ =>
         {
             using var connection = save.Database.Open();
             using var command = connection.CreateCommand();
@@ -113,11 +113,11 @@ public sealed class ImportConcurrencyTests
 
         var counting = new CountingMediaStore(save.MediaStore);
 
-        save.RunnerWith(counting).Run(Fixtures.Directory("forwards"));
+        save.RunnerWith(counting).Run(Exports.WriteForwards(save.ExportFolder("forwards")));
         var afterFirst = counting.PutCount;
 
         counting.Reset();
-        save.RunnerWith(counting).Run(Fixtures.Directory("forwards"));
+        save.RunnerWith(counting).Run(Exports.WriteForwards(save.ExportFolder("forwards")));
 
         Assert.True(afterFirst > 0, "The first import should have stored media.");
         Assert.Equal(0, counting.PutCount);

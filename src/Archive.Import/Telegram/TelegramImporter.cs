@@ -39,7 +39,7 @@ public sealed class TelegramImporter : IPlatformImporter
             ImportConfidence.Certain, accountId, accountName, files.Length);
     }
 
-    public void Read(string path, IImportSink sink)
+    public void Read(string path, IImportSink sink, ImportOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sink);
 

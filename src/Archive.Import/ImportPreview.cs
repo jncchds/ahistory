@@ -54,6 +54,26 @@ public sealed record ImportPreview
 
     public string? DetectedAccountName { get; init; }
 
+    /// <summary>
+    /// True when the format does not state its account, so the id above is inferred or absent.
+    /// </summary>
+    /// <remarks>
+    /// The UI asks rather than assumes when this is set. The alternative — which is what the app
+    /// used to do — is to invent an owner: your real account then arrives as an ordinary contact,
+    /// and a history file for your own account becomes a conversation between the placeholder and
+    /// you, indistinguishable from a real one.
+    /// </remarks>
+    public bool DetectedAccountIsGuess { get; init; }
+
+    /// <summary>
+    /// Accounts the export mentions that could be the owner's, best first.
+    /// </summary>
+    /// <remarks>
+    /// What the UI offers when it has to ask. Empty means the importer found nothing to offer and
+    /// the user has to supply the id themselves — or accept a placeholder they can attribute later.
+    /// </remarks>
+    public IReadOnlyList<string> AccountCandidates { get; init; } = [];
+
     /// <summary>The owner this save already has, if any.</summary>
     public string? OwnerName { get; init; }
 

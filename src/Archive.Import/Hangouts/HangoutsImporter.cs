@@ -71,7 +71,7 @@ public sealed class HangoutsImporter : IPlatformImporter
                 + "that source instead.");
     }
 
-    public void Read(string path, IImportSink sink)
+    public void Read(string path, IImportSink sink, ImportOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sink);
 
@@ -300,7 +300,17 @@ public sealed class HangoutsImporter : IPlatformImporter
             _ => "group",
         };
 
-        var thread = new NormalizedThread(id, kind, ConversationTitle(block, names, kind));
+        // Hangouts states its roster, and it is the only one of the four formats that does. A
+        // member who never typed is still someone who was in the room, which is what a group
+        // conversation's participant list has to show.
+        var roster = names
+            .Select(p => new NormalizedIdentity(
+                PlatformId, p.Key, Handle: null, p.Value ?? p.Key, IsSynthetic: false))
+            .ToArray();
+
+        var thread = new NormalizedThread(
+            id, kind, ConversationTitle(block, names, kind, SelfId(block)), roster);
+
         sink.OnThread(thread);
 
         if (!entry.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array)
@@ -333,20 +343,40 @@ public sealed class HangoutsImporter : IPlatformImporter
     /// A name for the conversation.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Group conversations may carry one; direct ones never do, so they are named after the other
     /// participant — which is what the app shows in the thread list and what a user recognizes.
+    /// </para>
+    /// <para>
+    /// <b>The other participant, not the first one.</b> Taking the first non-blank name titled a
+    /// direct conversation with your own name whenever the export happened to list you first — a
+    /// thread list full of chats that appear to be with yourself, from nothing more than field
+    /// order.
+    /// </para>
     /// </remarks>
     private static string? ConversationTitle(
-        JsonElement conversation, Dictionary<string, string?> names, string kind)
+        JsonElement conversation, Dictionary<string, string?> names, string kind, string? selfId)
     {
         if (conversation.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
         {
             return name.GetString();
         }
 
-        return kind == "dm"
-            ? names.Values.FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
-            : null;
+        if (kind != "dm")
+        {
+            return null;
+        }
+
+        var others = names
+            .Where(p => selfId is null || !string.Equals(p.Key, selfId, StringComparison.Ordinal))
+            .Select(p => p.Value)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToArray();
+
+        // Falling back to any name at all when the only participant named is you: a conversation
+        // with yourself is a real thing, and an untitled row is worse than a truthful one.
+        return others.FirstOrDefault()
+            ?? names.Values.FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
     }
 
     private NormalizedMessage? ReadEvent(

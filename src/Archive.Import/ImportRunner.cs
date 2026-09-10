@@ -63,12 +63,17 @@ public sealed class ImportRunner(
     /// Whether to keep each message's original export data (§1). The largest single thing in the
     /// database; <c>ahistory stats</c> reports how much.
     /// </param>
+    /// <param name="ownerAccountId">
+    /// Which account on this platform is the archive owner's, for the formats that do not say.
+    /// Null leaves the importer to work it out — and to say so, rather than to invent one.
+    /// </param>
     public ImportStats Run(
         string exportFolder,
         Action<ImportProgress>? onProgress = null,
         int batchSize = 1000,
         string? sourceId = null,
-        bool storeRawJson = true)
+        bool storeRawJson = true,
+        string? ownerAccountId = null)
     {
         var (folder, match) = Locate(exportFolder);
         var preview = ImportSourceResolver.Preview(_database, folder, match);
@@ -97,7 +102,7 @@ public sealed class ImportRunner(
         {
             var sink = new CommittingSink(committer, _mediaStore, folder, onProgress, _log);
 
-            match.Importer.Read(folder, sink);
+            match.Importer.Read(folder, sink, new ImportOptions(ownerAccountId));
 
             committer.Complete();
 
@@ -199,22 +204,55 @@ public sealed class ImportRunner(
         Action<ImportProgress>? onProgress,
         ILogger log) : IImportSink
     {
-        private string _currentChat = string.Empty;
+        private readonly Dictionary<string, List<NormalizedIdentity>> _rosters = new(StringComparer.Ordinal);
 
-        public void OnOwner(NormalizedIdentity owner) => committer.SeedOwner(owner);
+        private string _currentChat = string.Empty;
+        private NormalizedIdentity? _owner;
+
+        public void OnOwner(NormalizedIdentity owner)
+        {
+            _owner = owner;
+            committer.SeedOwner(owner);
+        }
 
         public void OnThread(NormalizedThread thread)
         {
             _currentChat = thread.Title ?? thread.SourceThreadId;
             committer.EnsureThread(thread.SourceThreadId, thread.Kind, thread.Title);
 
+            var roster = new List<NormalizedIdentity>(thread.Members);
+
+            // You are in every conversation you have, whether or not you said anything in it. A
+            // roster built from senders alone leaves a one-sided thread — you wrote, they never
+            // replied — with nobody in it, and the per-person view finds a direct thread by its
+            // participants (§4).
+            if (_owner is { } owner && thread.Kind is "dm" or "saved" &&
+                !roster.Any(p => p.SourceIdentityId == owner.SourceIdentityId))
+            {
+                roster.Add(owner);
+            }
+
+            if (roster.Count > 0)
+            {
+                // Held until the first message, which is where the only honest timestamp for a
+                // stated participant comes from: a conversation header carries no join times.
+                _rosters[thread.SourceThreadId] = roster;
+            }
+
             // The thread's id and kind, never its name: a list of who someone talks to is exactly
             // the sort of thing a log must not quietly accumulate.
-            log.LogDebug("Reading thread {ThreadId} ({ThreadKind}).", thread.SourceThreadId, thread.Kind);
+            log.LogDebug(
+                "Reading thread {ThreadId} ({ThreadKind}) with {ParticipantCount} stated participant(s).",
+                thread.SourceThreadId, thread.Kind, thread.Members.Count);
         }
 
         public void OnMessage(NormalizedThread thread, NormalizedMessage message)
         {
+            if (_rosters.Remove(message.SourceThreadId, out var roster))
+            {
+                committer.EnsureParticipants(message.SourceThreadId, roster, message.SentAtUnix);
+            }
+
             // Media is resolved lazily: the committer only asks when the message is genuinely
             // new or changed. On a re-import that is almost never, which is the difference
             // between re-hashing a whole media folder and touching none of it.

@@ -10,7 +10,7 @@ public sealed class PersonViewModelTests
     /// <summary>An export with a direct thread and a group the same person also speaks in.</summary>
     private static string Export(string messages) => $$"""
         {
-          "personal_information": { "user_id": 777001, "first_name": "Kirill" },
+          "personal_information": { "user_id": 777001, "first_name": "Owner", "last_name": "Synthetic" },
           "chats": { "list": [ {{messages}} ] }
         }
         """;
