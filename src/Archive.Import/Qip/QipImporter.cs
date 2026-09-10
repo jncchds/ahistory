@@ -20,21 +20,35 @@ namespace Archive.Import.Qip;
 /// </para>
 /// <code>
 /// header   0x00  3      "QHF"
-///          0x04  int32  history size in bytes
+///          0x03  byte   version, 3 in every file seen
+///          0x04  int32  bytes after this field — the file is 8 longer
 ///          0x22  int32  message count
 ///          0x2C  int16  UIN length,  then the UIN
-///                int16  nickname length, then the nickname
+///                int16  nickname length, then the nickname (the contact's, not the owner's)
 ///
 /// message  0x00  int16  signature, always 1
-///          0x02  int32  block size
-///          0x06  int16  field type   (1 online, 13 offline, 5/14 authorization)
+///          0x02  int32  bytes after this field — the block is 6 longer
+///          0x06  int16  field id, always 1
+///          0x08  int16  field length, always 4
 ///          0x0A  int32  message id
-///          0x0E  int16  field type
+///          0x0E  int16  field id, always 2
+///          0x10  int16  field length, always 4
 ///          0x12  int32  unix timestamp
+///          0x16  int16  field id, always 3
+///          0x18  int16  field length, always 3
 ///          0x1A  byte   1 when sent by the account owner
+///          0x1B  byte   always 0
+///          0x1C  byte   message type (1 online, 13 offline, 5/14 authorization)
+///          0x1D  int16  field id, always 4
 ///          0x1F  int32  message length
 ///          0x23         message bytes
 /// </code>
+/// <para>
+/// Both size fields measure what follows them rather than the whole of what they introduce, which
+/// is the single thing that made every real file unreadable at first. The blocks are really
+/// id/length/value triples; the offsets above are constant only because every field so far has
+/// had a constant length, and the validation below is what would catch that changing.
+/// </para>
 /// <para>
 /// Message text is UTF-8 obfuscated byte by byte with <c>b = 255 - b - i - 1</c>, which is its own
 /// inverse.
@@ -50,6 +64,18 @@ namespace Archive.Import.Qip;
 public sealed class QipImporter : IPlatformImporter
 {
     public const string PlatformId = "qip";
+
+    /// <summary>
+    /// Bytes before the region the header's size field measures: <c>"QHF"</c>, the version byte,
+    /// and the size field itself.
+    /// </summary>
+    private const int HeaderPrefixSize = 8;
+
+    /// <summary>
+    /// Bytes of a message block that its own size field does not count: the signature and the
+    /// size field.
+    /// </summary>
+    private const int BlockPrefixSize = 6;
 
     /// <summary>QIP predates ICQ's decline; anything outside this is a misread field.</summary>
     private static readonly DateTimeOffset Earliest = new(1996, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -139,9 +165,13 @@ public sealed class QipImporter : IPlatformImporter
     /// </summary>
     /// <remarks>
     /// QIP stores histories under <c>&lt;profile&gt;\&lt;own UIN&gt;\History\&lt;contact&gt;.qhf</c>, and the
-    /// file itself names only the *contact*. Without the owner there is no "me", so every message
-    /// would render as incoming and the conversation would read as a monologue — so the numeric
-    /// folder above History is used, and "self" stands in when the layout is not recognizable.
+    /// file itself names only the *contact*, so the numeric folder above History is the only thing
+    /// that says who "me" is.
+    ///
+    /// When the layout is not recognizable — a bare pile of .qhf files — "self" stands in. Each
+    /// message keeps the direction its own block records, so the conversation still reads
+    /// correctly; what is lost is the account's real identity, which means this owner will not
+    /// merge with the same person arriving from any other import.
     /// </remarks>
     private static string? OwnerUin(string root, string firstFile)
     {
@@ -176,12 +206,18 @@ public sealed class QipImporter : IPlatformImporter
 
         var declaredSize = ReadInt32(bytes, 0x04, file);
 
-        // The header states the file's own length. Disagreement means the layout is not what we
-        // think it is, and every offset after this one would be read from the wrong place.
-        if (declaredSize != bytes.Length)
+        // The header states the length of everything after the 8-byte prefix — the signature, the
+        // version byte and this field itself are not counted. Real QIP Infium files are all
+        // consistently 8 bytes longer than this number; reading it as the whole file's length
+        // rejected every one of them as truncated.
+        //
+        // Disagreement still means the layout is not what we think it is, and every offset after
+        // this one would then be read from the wrong place, so the check stays — corrected.
+        if (declaredSize != bytes.Length - HeaderPrefixSize)
         {
             throw new InvalidDataException(
-                $"'{file}' declares {declaredSize} bytes but is {bytes.Length}. "
+                $"'{file}' declares {declaredSize} bytes after its header but has "
+                + $"{bytes.Length - HeaderPrefixSize}. "
                 + "The file is truncated, or this is not the QHF layout this reader knows.");
         }
 
@@ -239,21 +275,39 @@ public sealed class QipImporter : IPlatformImporter
                 $"'{file}' has {signature} where a message block signature (1) was expected, at byte {start}.");
         }
 
+        // Like the header's, this length measures what follows it, not the whole block: the
+        // signature and the size field are not counted.
         var blockSize = ReadInt32(bytes, start + 0x02, file);
+        var blockEnd = start + BlockPrefixSize + blockSize;
 
-        if (blockSize <= 0 || start + blockSize > bytes.Length)
+        if (blockSize <= 0 || blockEnd > bytes.Length)
         {
             throw new InvalidDataException(
                 $"'{file}' declares a {blockSize}-byte message block at byte {start}, which runs past the file.");
         }
 
-        var fieldType = ReadInt16(bytes, start + 0x06, file);
+        // The offsets below are only constant while every field keeps the length it has always
+        // had. Checking each id/length pair means a block shaped differently stops here, naming
+        // the byte, instead of being read as a message assembled from the wrong fields.
+        RequireField(bytes, start + 0x06, id: 1, length: 4, file);
+        RequireField(bytes, start + 0x0E, id: 2, length: 4, file);
+        RequireField(bytes, start + 0x16, id: 3, length: 3, file);
+
+        // Field 4 is the odd one: its id is an int16 like the rest, but its length is an int32,
+        // read below as the message length.
+        RequireFieldId(bytes, start + 0x1D, id: 4, file);
+
         var messageId = ReadInt32(bytes, start + 0x0A, file);
         var timestamp = ReadInt32(bytes, start + 0x12, file);
+
+        // The third field is three bytes: direction, a byte that is always zero, then the message
+        // type. Not the int16 at +0x06 — that is a field *id* and is 1 in every block ever seen,
+        // so classifying on it marked every service message as ordinary chat.
         var outgoing = bytes[start + 0x1A] != 0;
+        var messageType = bytes[start + 0x1C];
         var length = ReadInt32(bytes, start + 0x1F, file);
 
-        if (length < 0 || start + 0x23 + length > start + blockSize)
+        if (length < 0 || start + 0x23 + length > blockEnd)
         {
             throw new InvalidDataException(
                 $"'{file}' declares a {length}-byte message at byte {start}, which runs past its own block.");
@@ -275,9 +329,9 @@ public sealed class QipImporter : IPlatformImporter
             // The message id is only unique within its file, so the contact's UIN scopes it.
             Uid = $"qip/{contactUin}/{messageId.ToString(CultureInfo.InvariantCulture)}",
             SourceThreadId = contactUin,
-            Kind = fieldType is 5 or 14 ? "service" : "message",
+            Kind = messageType is 5 or 14 ? "service" : "message",
             Sender = outgoing ? owner : contact,
-            ServiceAction = fieldType switch
+            ServiceAction = messageType switch
             {
                 5 => "authorization_request",
                 14 => "authorization_accepted",
@@ -289,7 +343,7 @@ public sealed class QipImporter : IPlatformImporter
             ContentHash = ContentHash(text),
         });
 
-        return start + blockSize;
+        return blockEnd;
     }
 
     /// <summary>
@@ -323,6 +377,33 @@ public sealed class QipImporter : IPlatformImporter
         }
 
         return encoded;
+    }
+
+    /// <summary>Checks one id/length marker pair inside a message block.</summary>
+    private static void RequireField(byte[] bytes, int offset, int id, int length, string file)
+    {
+        RequireFieldId(bytes, offset, id, file);
+
+        var actual = ReadInt16(bytes, offset + 2, file);
+
+        if (actual != length)
+        {
+            throw new InvalidDataException(
+                $"'{file}' gives field {id} at byte {offset} a length of {actual}, not {length}. "
+                + "The block layout does not match this reader.");
+        }
+    }
+
+    private static void RequireFieldId(byte[] bytes, int offset, int id, string file)
+    {
+        var actual = ReadInt16(bytes, offset, file);
+
+        if (actual != id)
+        {
+            throw new InvalidDataException(
+                $"'{file}' has field id {actual} at byte {offset} where {id} was expected. "
+                + "The block layout does not match this reader.");
+        }
     }
 
     private static int ReadInt32(byte[] bytes, int offset, string file)

@@ -29,6 +29,12 @@ public sealed class QipImporterTests
     {
         var blocks = messages.Select((m, i) => MessageBlock(i + 1, m.Text, m.Outgoing, m.At)).ToArray();
 
+        return WriteBlocks(folder, uin, nickname, blocks);
+    }
+
+    /// <summary>The same file, for tests that need to shape the blocks themselves.</summary>
+    private static string WriteBlocks(string folder, string uin, string nickname, byte[][] blocks)
+    {
         var uinBytes = Encoding.ASCII.GetBytes(uin);
         var nickBytes = Encoding.UTF8.GetBytes(nickname);
 
@@ -40,9 +46,12 @@ public sealed class QipImporterTests
         file[0] = (byte)'Q';
         file[1] = (byte)'H';
         file[2] = (byte)'F';
+        file[3] = 3;
 
-        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x04), total);
-        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x22), messages.Length);
+        // Measures what follows the field, so it is 8 short of the file. Writing the whole length
+        // here is what made these fixtures agree with a reader that could not open a real export.
+        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x04), total - 8);
+        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x22), blocks.Length);
         BinaryPrimitives.WriteInt16BigEndian(file.AsSpan(0x2C), (short)uinBytes.Length);
 
         uinBytes.CopyTo(file.AsSpan(0x2E));
@@ -65,18 +74,41 @@ public sealed class QipImporterTests
         return path;
     }
 
-    private static byte[] MessageBlock(int id, string text, bool outgoing, DateTimeOffset at)
+    /// <summary>
+    /// One message block, byte for byte as QIP Infium writes them.
+    /// </summary>
+    /// <remarks>
+    /// Every id and length marker is written out rather than left as a zeroed gap. They are what
+    /// pins the offsets of everything after them, and a fixture that omits them cannot tell a
+    /// reader that reads the right field from one that reads a constant.
+    /// </remarks>
+    private static byte[] MessageBlock(
+        int id, string text, bool outgoing, DateTimeOffset at, byte messageType = 1)
     {
         var encoded = QipImporter.Encode(text);
         var block = new byte[0x23 + encoded.Length];
 
         BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x00), 1);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x02), block.Length);
+
+        // As in the header, the size counts what follows it — the six bytes it shares the block
+        // with are not included.
+        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x02), block.Length - 6);
+
         BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x06), 1);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x08), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x0A), id);
+
         BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x0E), 2);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x10), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x12), (int)at.ToUnixTimeSeconds());
+
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x16), 3);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x18), 3);
         block[0x1A] = outgoing ? (byte)1 : (byte)0;
+        block[0x1B] = 0;
+        block[0x1C] = messageType;
+
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x1D), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x1F), encoded.Length);
         encoded.CopyTo(block.AsSpan(0x23));
 
@@ -95,6 +127,96 @@ public sealed class QipImporterTests
             ("всё в порядке", false, new DateTimeOffset(2008, 5, 1, 12, 2, 0, TimeSpan.Zero)));
 
         return folder;
+    }
+
+    // These three pin the facts that only real QIP Infium files could establish. The reader was
+    // first written to a reading of the format in which both size fields counted the whole of
+    // what they introduced and the message type was the int16 at +0x06. Everything agreed —
+    // because the fixtures were built from the same reading — and not one real file could be
+    // opened. Fixtures cannot confirm a format; they can only keep a confirmed one from drifting.
+
+    /// <summary>
+    /// Both size fields measure what follows them, so a file sized the other way is refused.
+    /// </summary>
+    /// <remarks>
+    /// This is the exact shape of the original bug: every real export is eight bytes longer than
+    /// its own size field, and reading that field as the file's length rejected all of them as
+    /// truncated.
+    /// </remarks>
+    [Fact]
+    public void A_size_field_counting_the_whole_file_is_refused()
+    {
+        var folder = Sample("qip-whole-file-size");
+        var file = System.IO.Directory.GetFiles(folder)[0];
+
+        var bytes = File.ReadAllBytes(file);
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(0x04), bytes.Length);
+        File.WriteAllBytes(file, bytes);
+
+        Assert.Throws<InvalidDataException>(() => Read(folder));
+    }
+
+    /// <summary>
+    /// The message type is the byte at +0x1C, not the int16 at +0x06.
+    /// </summary>
+    /// <remarks>
+    /// +0x06 is a field id and is 1 in every block of every real file, so classifying on it made
+    /// "service" unreachable — authorization requests were filed as ordinary chat. Nothing failed;
+    /// the archive was just quietly wrong, which is why this asserts both directions.
+    /// </remarks>
+    [Fact]
+    public void Authorization_messages_are_service_messages_and_ordinary_ones_are_not()
+    {
+        var folder = Fixtures.Temp("qip-service");
+        var history = Path.Combine(folder, "12345678", "History");
+        System.IO.Directory.CreateDirectory(history);
+
+        var at = new DateTimeOffset(2008, 5, 1, 12, 0, 0, TimeSpan.Zero);
+        var blocks = new[]
+        {
+            MessageBlock(1, "привет", outgoing: false, at, messageType: 1),
+            MessageBlock(2, "", outgoing: false, at.AddMinutes(1), messageType: 5),
+            MessageBlock(3, "", outgoing: true, at.AddMinutes(2), messageType: 14),
+            MessageBlock(4, "позже", outgoing: false, at.AddMinutes(3), messageType: 13),
+        };
+
+        WriteBlocks(history, "87654321", "Марина", blocks);
+
+        var messages = Read(history).Messages.Select(m => m.Message).ToArray();
+
+        Assert.Equal(
+            ["message", "service", "service", "message"],
+            messages.Select(m => m.Kind));
+
+        Assert.Equal(
+            [null, "authorization_request", "authorization_accepted", null],
+            messages.Select(m => m.ServiceAction));
+    }
+
+    /// <summary>
+    /// A block whose fields are not the lengths the fixed offsets assume is refused.
+    /// </summary>
+    /// <remarks>
+    /// The blocks are really id/length/value triples. Reading them at fixed offsets is only safe
+    /// while every length stays what it has always been, so the reader checks each marker — the
+    /// alternative is assembling a message out of fields that have shifted underneath it.
+    /// </remarks>
+    [Fact]
+    public void A_block_whose_field_markers_differ_is_refused()
+    {
+        var folder = Sample("qip-bad-marker");
+        var file = System.IO.Directory.GetFiles(folder)[0];
+
+        var bytes = File.ReadAllBytes(file);
+        var headerLength = 0x2E + 8 + 2 + Encoding.UTF8.GetByteCount("Марина");
+
+        // Field 3 is three bytes in every file seen. Claim four.
+        BinaryPrimitives.WriteInt16BigEndian(bytes.AsSpan(headerLength + 0x18), 4);
+        File.WriteAllBytes(file, bytes);
+
+        var error = Assert.Throws<InvalidDataException>(() => Read(folder));
+
+        Assert.Contains("field 3", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

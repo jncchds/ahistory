@@ -67,21 +67,32 @@ messages they sent — with surrounding context, because an isolated group line 
 | **Telegram** | the folder containing `result.json` | Documented, and verified against real exports |
 | **Google Hangouts** | the Takeout folder containing `Hangouts.json` | Well known, and frozen — Hangouts shut down in 2022 |
 | **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
-| **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format, read from a community reverse engineering |
+| **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format; reverse engineered, then corrected against real files |
 | WhatsApp, Meta (Facebook/Instagram) | — | Planned |
 | Signal, iMessage, Discord | — | Under consideration: local databases, or need third-party tooling |
 
 Point the app at the folder and it works out which format it is, says so, and refuses rather than
 guessing if it does not recognize it.
 
-**Only the Telegram reader has met a real archive.** The other three are built to the formats as
+**Telegram and QIP have met real archives.** Google Hangouts and VK are built to the formats as
 documented and covered by tests, which proves they do what was intended — not that what was
-intended matches what is on your disk. They are deliberately strict: anything a reader does not
+intended matches what is on your disk. All four are deliberately strict: anything a reader does not
 understand stops the import and names it, because for an archive a reader that silently mangles a
 third of your messages is far worse than one that stops.
 
+The QIP reader is worth a word of warning about the other two. It passed its tests and could not
+open a single real file, because its fixtures were written from the same misreading of the format
+as the reader itself ([D22](docs/decisions.md)). Fixtures keep a confirmed format from drifting;
+they cannot confirm one.
+
 Export from Telegram Desktop as **JSON**, not HTML, and keep the whole export folder together —
 the media files are referenced by relative path.
+
+For QIP, keep the folder QIP itself used: `<your own UIN>/History/<contact>.qhf`. A `.qhf` file
+names only the contact, so the folder above `History` is the only thing that says which side of the
+conversation is you. Point at a bare pile of `.qhf` files and they still import with the
+right side of each message intact, but "me" becomes a placeholder that will not line up with your
+account from any other import.
 
 ## Build and run
 

@@ -29,7 +29,8 @@ public sealed class MultiPlatformTests
         file[0] = (byte)'Q';
         file[1] = (byte)'H';
         file[2] = (byte)'F';
-        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x04), file.Length);
+        // Both size fields measure what follows them — see QipImporterTests for the full layout.
+        BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x04), file.Length - 8);
         BinaryPrimitives.WriteInt32BigEndian(file.AsSpan(0x22), 1);
         BinaryPrimitives.WriteInt16BigEndian(file.AsSpan(0x2C), (short)uin.Length);
         uin.CopyTo(file.AsSpan(0x2E));
@@ -37,11 +38,18 @@ public sealed class MultiPlatformTests
         nick.CopyTo(file.AsSpan(0x2E + uin.Length + 2));
 
         BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x00), 1);
-        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x02), block.Length);
+        BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x02), block.Length - 6);
         BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x06), 1);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x08), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x0A), 1);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x0E), 2);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x10), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x12),
             (int)new DateTimeOffset(2008, 5, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x16), 3);
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x18), 3);
+        block[0x1C] = 1;
+        BinaryPrimitives.WriteInt16BigEndian(block.AsSpan(0x1D), 4);
         BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(0x1F), encoded.Length);
         encoded.CopyTo(block.AsSpan(0x23));
         block.CopyTo(file.AsSpan(headerLength));
