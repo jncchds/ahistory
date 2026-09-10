@@ -634,3 +634,60 @@ letting it open and fail at the first import. That is the intended trade — a s
 not recognize cannot be safely *read* either, and a save that silently answers queries from tables
 that are not the ones the queries were written against is the outcome this whole file keeps
 choosing against.
+
+## D24 — Four states for a save's schema, and an upgrade nobody performs by accident
+
+D23 added a check that a save's schema is the one the migrations produce, and refused it otherwise.
+That was right about the case it was built for and wrong about every other one, because it had only
+a single unhappy state. A save made by a *newer* build was told to start a new save — advice that,
+followed, discards the newer of the two.
+
+A save's `schema_migration` names now decide which of four states it is in, before anything is
+applied:
+
+| State | How it is recognized | What happens |
+|---|---|---|
+| Up to date | the same migrations, and the schema they produce | opens |
+| **Behind** | its migrations are a leading run of this build's | the only upgradeable state |
+| **Ahead** | it has migrations this build does not | refused: *update ahistory* |
+| Diverged | all migrations run but the wrong schema, or a gap in the middle | refused: import into a new save |
+
+The prefix test is sound only because migrations are append-only and run in filename order. A gap
+in the middle is deliberately not an upgrade: a save missing `003` while holding `004` was not left
+behind by an older build, and running `003` over the top of it would produce something no version
+of this app has ever made.
+
+**Upgrading is never a side effect of opening a save.** It is one-way — there is no rollback and
+there will not be one — so `Migrate` throws `SchemaUpgradeRequiredException` for a save that is
+behind, and the decision reaches whoever can ask. The CLI turns it into `init <save> --upgrade` and
+prints the migrations by name; the desktop head shows the question instead of the main window,
+because there is nothing to browse until the save is readable and a dialog over an empty archive
+reads as an error rather than a question.
+
+The copy taken first is `VACUUM INTO` rather than a file copy: it yields one consistent file with
+the WAL folded in, where copying `archive.db` beside a live `-wal` yields a file missing whatever
+had not been checkpointed. It refuses to overwrite, because the file it would overwrite may be the
+only copy of a save nobody can rebuild. Only the database is copied — migrations never touch media,
+which is content-addressed in a directory of its own.
+
+**The runtime check is the backstop, not the fix.** What actually went wrong in D23 was a migration
+edited after it had shipped, and no amount of classification prevents that — it only reports it,
+late, on someone else's machine. `MigrationTests` now pins the SHA-256 of every migration that has
+shipped, so editing one fails a test on the commit that does it. That is ~20 lines and would have
+prevented the whole episode. Note the failure mode of the guard itself: updating a hash to make the
+test pass is the same mistake with an extra step, which is why the table says so in the file.
+
+A checksum column on `schema_migration` was the obvious alternative and is worse. It could only
+verify migrations applied after it was introduced, so it would have been blind to the save that
+prompted D23; it needs a schema change to add; and it would change `schema_migration`'s own
+definition, which is *inside* the fingerprint — so introducing it would classify every existing
+save as diverged.
+
+`004_provenance.sql` records which build created a save and which last changed its shape, so
+"made by a newer version of ahistory" can become "made by ahistory 0.3.0; this is 0.2.0". Written
+by the app rather than by the migration, which has no way to know what is running it, and only when
+the schema changes — a save that is merely read is not written to. `created_by` stays null on a save
+that predates the table: it was made before anything recorded this, and filling it in with whichever
+build happened to run the upgrade would invent the history the column exists to report. Being the
+first migration added after all of this, it also put the upgrade path through its paces on something
+real rather than on a simulation.

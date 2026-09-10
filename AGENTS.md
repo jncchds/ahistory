@@ -118,6 +118,14 @@ filename order. There are no EF migrations and `EnsureCreated` is never called. 
 column, map it in `ArchiveDbContext` — `EfSchemaTests` checks both directions and will fail if
 you map a column that does not exist or add one you did not map.
 
+**Migrations are append-only. Never edit one that has shipped** (decisions.md D24). A save records
+migrations by *filename*, so it has no memory of what the file said when it ran: editing an applied
+migration changes what new saves get and leaves every existing save behind, undetectably. It has
+happened once already, and it surfaced as a `NOT NULL` failure on a column the code no longer
+mentioned. `MigrationTests` pins the SHA-256 of every migration that has shipped — add a line when
+you add a migration; **changing a hash to make that test pass is the bug it exists to catch.**
+Schema only ever moves forward: there is no rollback and no support for a diverged save.
+
 **Every connection goes through `Database`.** It applies the pragma block, including
 `recursive_triggers`, without which cascaded deletes fire no triggers and the FTS index silently
 retains rows for messages that no longer exist.

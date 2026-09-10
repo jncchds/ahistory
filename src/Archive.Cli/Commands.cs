@@ -35,6 +35,13 @@ internal static class Commands
                 _ => Unknown(args[0]),
             };
         }
+        catch (SchemaUpgradeRequiredException ex)
+        {
+            // Reachable from every command that opens a save. The answer is the same for all of
+            // them, and it is a thing to type rather than a thing to know.
+            ReportUpgradeNeeded(ex.SavePath, ex.Pending);
+            return 1;
+        }
         catch (Exception ex)
         {
             // A CLI that prints a stack trace for a bad path is a CLI nobody reads the output of.
@@ -44,18 +51,23 @@ internal static class Commands
     }
 
     /// <summary>
-    /// Creates a save at the given path, or brings an existing one up to date.
+    /// Creates a save at the given path, or carries an existing one forward with
+    /// <c>--upgrade</c>.
     /// </summary>
     /// <remarks>
     /// Safe to run twice: migrations are recorded by name, so a second run applies nothing. That
     /// is not a convenience — it is the same property the importer relies on, checked in the one
     /// place where it is trivial to observe.
+    ///
+    /// Upgrading an existing save is the one thing here that is not repeatable, so it needs
+    /// <c>--upgrade</c> to be asked for by name. This command is where that lives, and every other
+    /// command points at it rather than quietly migrating a save out from under someone.
     /// </remarks>
     private static int Init(string[] args)
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("usage: ahistory init <path-to-save.db>");
+            Console.Error.WriteLine("usage: ahistory init <path-to-save.db> [--upgrade] [--no-backup]");
             return 2;
         }
 
@@ -72,13 +84,81 @@ internal static class Commands
         Directory.CreateDirectory(options.ResolveMediaDirectory());
 
         var database = new Database(options, _loggerFactory.CreateLogger<Database>());
-        database.Migrate();
+        var status = database.Inspect();
+
+        if (status.CanUpgrade && !args.Contains("--upgrade"))
+        {
+            ReportUpgradeNeeded(database.DatabasePath, status.Pending);
+            return 1;
+        }
+
+        if (status.CanUpgrade)
+        {
+            var backup = args.Contains("--no-backup")
+                ? null
+                : BackupPathFor(database.DatabasePath, status.Pending);
+
+            var applied = database.Upgrade(backup);
+
+            Console.WriteLine($"upgraded {applied.Count} migration(s): {string.Join(", ", applied)}");
+            Console.WriteLine(backup is null
+                ? "backup   none (--no-backup)"
+                : $"backup   {backup}");
+        }
+        else
+        {
+            database.Migrate();
+        }
 
         Console.WriteLine($"save     {database.DatabasePath}");
         Console.WriteLine($"media    {options.ResolveMediaDirectory()}");
         Console.WriteLine($"schema   {database.SchemaFingerprint()[..12]}");
 
         return 0;
+    }
+
+    /// <summary>
+    /// Explains that a save is behind and what to type, on stderr.
+    /// </summary>
+    /// <remarks>
+    /// Every command that opens a save can hit this, and all of them say the same thing, because
+    /// the answer does not depend on what the caller was trying to do.
+    /// </remarks>
+    private static void ReportUpgradeNeeded(string savePath, IReadOnlyList<string> pending)
+    {
+        Console.Error.WriteLine(
+            $"error: '{savePath}' was made by an older version of ahistory.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"  {pending.Count} migration(s) would be applied:");
+
+        foreach (var name in pending)
+        {
+            Console.Error.WriteLine($"    {name}");
+        }
+
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("  Upgrading cannot be undone, so it is not done automatically.");
+        Console.Error.WriteLine("  A copy of the save is written first unless --no-backup is passed.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"    ahistory init \"{savePath}\" --upgrade");
+    }
+
+    /// <summary>
+    /// Where to put the copy taken before an upgrade: beside the save, named for the migration
+    /// it is about to run, and never overwriting an existing file.
+    /// </summary>
+    private static string BackupPathFor(string savePath, IReadOnlyList<string> pending)
+    {
+        // "004_annotations.sql" -> "004", so the name says what the copy predates.
+        var stage = pending[0].Split('_')[0];
+        var candidate = $"{savePath}.pre-{stage}";
+
+        for (var n = 2; File.Exists(candidate); n++)
+        {
+            candidate = $"{savePath}.pre-{stage}-{n}";
+        }
+
+        return candidate;
     }
 
     /// <summary>
@@ -308,6 +388,10 @@ internal static class Commands
 
         var database = new Database(options);
 
+        // Reads columns that only exist at this schema, so the same check every other command
+        // makes applies here: it reports what a save is made of, or says why it cannot.
+        database.Migrate();
+
         using var connection = database.Open();
         using var command = connection.CreateCommand();
 
@@ -431,7 +515,8 @@ internal static class Commands
             ahistory — local-first message archive
 
             usage:
-              ahistory init <path-to-save.db>   create or migrate a save
+              ahistory init <save.db> [--upgrade] [--no-backup]
+                                    create a save, or carry an older one forward
               ahistory hash <file>              show the content address a file would take
               ahistory import <save.db> <folder> [--source <id>] [--no-raw-json]
                                                 import an export folder; the format is detected

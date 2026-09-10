@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+        x:Class="Archive.Ui.Views.UpgradeWindow"
+        x:DataType="vm:UpgradeViewModel"
+        Title="ahistory — upgrade this save"
+        Width="620" SizeToContent="Height"
+        MinWidth="520"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        Background="{DynamicResource ConversationBrush}">
+
+  <StackPanel Margin="26,22" Spacing="14">
+
+    <TextBlock Classes="heading" Text="Upgrade this save?" />
+
+    <TextBlock TextWrapping="Wrap" Text="{Binding Summary}" />
+
+    <!-- The path, because someone with several archives needs to know which one this is. -->
+    <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap" Text="{Binding SavePath}" />
+
+    <!--
+      Named rather than counted. These are file names from the project, not anything personal,
+      and "003_search.sql" is something a bug report can quote.
+    -->
+    <Border Background="{DynamicResource RailBrush}" CornerRadius="6" Padding="12,10">
+      <StackPanel Spacing="3">
+        <TextBlock Classes="subtle" FontSize="11" Text="Changes to apply" />
+        <ItemsControl ItemsSource="{Binding Pending}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock FontFamily="Consolas,Menlo,monospace" FontSize="12" Text="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <!--
+      There is no rollback and there never will be, so the copy is on by default and the path is
+      shown rather than described.
+    -->
+    <StackPanel Spacing="4">
+      <CheckBox IsChecked="{Binding BackUpFirst}" Content="Copy the save first (recommended)" />
+      <TextBlock Classes="faint" TextWrapping="Wrap" Margin="28,0,0,0"
+                 IsVisible="{Binding BackUpFirst}"
+                 Text="{Binding BackupPath}" />
+    </StackPanel>
+
+    <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+               Text="Upgrading cannot be undone. Your messages and media are not changed — only the structure of the database around them." />
+
+    <TextBlock Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+               Text="{Binding Error}" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="Quit" Click="OnQuit" IsEnabled="{Binding !IsBusy}" />
+      <Button Content="Upgrade" Classes="accent"
+              Command="{Binding UpgradeCommand}" IsEnabled="{Binding !IsBusy}" />
+    </StackPanel>
+
+    <TextBlock Classes="subtle" FontSize="12" HorizontalAlignment="Right"
+               IsVisible="{Binding IsBusy}"
+               Text="Working — this can take a while on a large archive." />
+
+  </StackPanel>
+</Window>

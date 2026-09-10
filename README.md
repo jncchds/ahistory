@@ -120,6 +120,26 @@ dotnet run --project src/Archive.Cli -- import ~/archives/mine.db ~/Downloads/Te
 dotnet run --project src/Archive.Cli -- sources ~/archives/mine.db
 ```
 
+## Opening a save made by an older version
+
+A new version can need to change the shape of the database. When it does, the save is not migrated
+out from under you — the app says what would change and asks, and the desktop app asks the same
+question in place of its main window. In the CLI:
+
+```bash
+dotnet run --project src/Archive.Cli -- init ~/archives/mine.db --upgrade
+```
+
+A copy of the save is written beside it first (`mine.db.pre-004`) unless you pass `--no-backup`.
+The copy is a complete database in its own right, and it is what you keep if you ever want the save
+as it was, because **the schema only moves forward — there is no downgrade**. Your messages and
+media are not touched; only the structure around them. Media is not copied, because migrations
+never touch it.
+
+A save made by a *newer* ahistory than the one you are running is refused rather than migrated, and
+says to update the app. Do not start a new save in that situation — the existing one is the newer
+of the two.
+
 ## Layout
 
 ```
