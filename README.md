@@ -1,23 +1,4 @@
-| M7 | Packaging for Windows, Linux and macOS | ✅ || Source | What to point at | How well it is known |
-|---|---|---|
-| **Telegram** | the folder containing `result.json` | Documented format, verified against real exports |
-| **Google Hangouts** | the Takeout folder containing `Hangouts.json` | Well known, and frozen — Hangouts shut down in 2022 |
-| **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
-| **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format, read from a community reverse engineering |
-| WhatsApp, Meta (Facebook/Instagram) | — | Planned |
-| Signal, iMessage, Discord | — | Under consideration — local databases, or need third-party tooling |
-
-Just point the app at the folder: it works out which format it is, says so, and refuses rather
-than guessing if it does not recognize it.
-
-**Only the Telegram reader has met a real archive.** The other three are built to the formats as
-documented and covered by tests, which proves they do what was intended — not that what was
-intended matches what is on your disk. They are deliberately strict: anything a reader does not
-understand stops the import and names it, because for an archive a reader that silently mangles a
-third of your messages is far worse than one that stops.
-
-Export from Telegram Desktop as **JSON**, not HTML, and keep the whole export folder together —
-the media files are referenced by relative path.# ahistory
+# ahistory
 
 A local-first personal message archive.
 
@@ -54,7 +35,7 @@ keyword search, and standalone builds for all three desktop platforms.
 | M4 | Desktop shell, import UI, identity merging | ✅ |
 | M5 | The continuous per-person conversation | ✅ |
 | M6 | Full-text search | ✅ |
-| M7 | Packaging for Windows, Linux and macOS | ⬜ |
+| M7 | Packaging for Windows, Linux and macOS | ✅ |
 
 Later: transcription and OCR, embeddings and hybrid search, session extraction, the knowledge
 base and diary. The V1 schema already carries the seams those need, so they arrive as new code
@@ -135,12 +116,13 @@ src/
   Archive.Core      domain records and options contracts. Depends on nothing.
   Archive.Data      connections, pragmas, migrations, EF mapping, raw-SQL queries
   Archive.Media     content-addressed blob store
-  Archive.Import    Telegram reader, normalizer, committer
-  Archive.Cli       headless init/import — how the importer is proven without a UI
+  Archive.Import    one reader per platform, normalizer, committer
+  Archive.Logging   logging setup shared by both heads
+  Archive.Cli       headless init/import — how the importers are proven without a UI
   Archive.Ui        Avalonia views and view models
   Archive.Desktop   the thin desktop head
 tests/
-  fixtures/telegram golden export fixtures, one per parser trap
+  fixtures/         golden export fixtures, one per parser trap, per platform
 ```
 
 `Core` depends on nothing, everything depends on `Core`, the heads depend on everything —
