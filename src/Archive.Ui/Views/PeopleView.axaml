@@ -12,7 +12,7 @@
     <Border Grid.Column="0" Background="{DynamicResource ListBrush}">
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Margin="10" Spacing="6">
-          <TextBox Text="{Binding Search}" Watermark="Find a person or account" />
+          <TextBox Text="{Binding Search}" PlaceholderText="Find a person or account" />
           <ComboBox HorizontalAlignment="Stretch"
                     ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" />
           <TextBlock Classes="faint" IsVisible="{Binding HasMatches}"
@@ -82,7 +82,7 @@
                              DisplayName="{Binding SelectedPerson.DisplayName}" />
             <StackPanel VerticalAlignment="Center" Spacing="4">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBox Width="240" Text="{Binding NewName}" Watermark="Name" />
+                <TextBox Width="240" Text="{Binding NewName}" PlaceholderText="Name" />
                 <Button Content="Rename" Command="{Binding RenameCommand}" />
                 <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3" Padding="5,1"
                         VerticalAlignment="Center"

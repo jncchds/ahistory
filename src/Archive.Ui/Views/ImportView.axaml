@@ -71,7 +71,7 @@
         <TextBlock Text="Your account on this platform" FontWeight="SemiBold" />
         <TextBlock Classes="subtle" TextWrapping="Wrap" Text="{Binding AccountQuestion}" />
         <Grid ColumnDefinitions="220,10,*">
-          <TextBox Grid.Column="0" Text="{Binding OwnerAccountId}" Watermark="Leave blank if unsure" />
+          <TextBox Grid.Column="0" Text="{Binding OwnerAccountId}" PlaceholderText="Leave blank if unsure" />
           <ItemsControl Grid.Column="2" ItemsSource="{Binding AccountCandidates}"
                         VerticalAlignment="Center">
             <ItemsControl.ItemsPanel>
