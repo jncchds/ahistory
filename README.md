@@ -237,6 +237,7 @@ them until allowed in System Settings.
 - **[docs/decisions.md](docs/decisions.md)** — every departure from that spec, with reasoning.
 - **[AGENTS.md](AGENTS.md)** — principles and conventions for anyone (or anything) writing code here.
 - **[docs/v1-plan.md](docs/v1-plan.md)** — the V1 implementation plan as originally approved, kept as a historical record.
+- **[docs/importer-roadmap.md](docs/importer-roadmap.md)** — what adding more platforms would take, and what the importer contract cannot yet express. Analysis, not commitments.
 
 ## Privacy
 
