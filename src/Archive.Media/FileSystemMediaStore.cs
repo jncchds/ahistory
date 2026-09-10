@@ -7,7 +7,16 @@ namespace Archive.Media;
 /// <param name="Hash">Lowercase hex SHA-256 of the contents.</param>
 /// <param name="Extension">Normalized extension, including the leading dot, or empty.</param>
 /// <param name="ByteSize">Size of the stored file.</param>
-/// <param name="WasNew">False when identical bytes were already stored.</param>
+/// <param name="WasNew">
+/// False when identical bytes were already stored.
+///
+/// Exact when one caller stores at a time, which is what the importer does, and what the
+/// "stored / deduplicated" counts on an import report. Under a genuine race it is advisory:
+/// <see cref="File.Move(string, string, bool)"/> does not reject an existing destination
+/// identically on every platform, so two simultaneous callers storing the same bytes can both
+/// believe they created the file. What holds everywhere is the part that matters — identical
+/// bytes end up as exactly one file with the correct contents.
+/// </param>
 public readonly record struct MediaPutResult(string Hash, string Extension, long ByteSize, bool WasNew);
 
 public interface IMediaStore

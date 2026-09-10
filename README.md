@@ -169,9 +169,12 @@ Pass `--verbose` to either the app or the CLI for debug-level detail.
 
 ## Releases
 
-Pushing a `release/x.y.z` branch builds standalone packages for Windows, Linux and macOS and
-attaches them to a **draft** GitHub release. Publishing that draft is what creates the tag — a
-branch keeps moving, and "what shipped as 0.1.0" should be answered by something that does not.
+Pushing a `release/x.y.z` branch builds standalone packages for Windows, Linux and macOS,
+publishes a GitHub release named after the version, and tags it `vx.y.z`. A version with a suffix
+— `0.2.0-beta.1` — is marked a pre-release automatically. Pushing to `main` never releases.
+
+The tag is what answers "what shipped as 0.1.0", because a branch keeps moving. Nothing is
+packaged until the tests pass on all three platforms, so a release that exists was green.
 
 Builds are self-contained and untrimmed (EF Core reflection does not survive trimming), around
 115 MB per platform, and **unsigned**: Windows SmartScreen will warn and macOS will refuse to open

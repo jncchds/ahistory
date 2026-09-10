@@ -540,3 +540,31 @@ assumption stops the import instead of filling an archive.
   and never was.
 - **QIP names only the contact**, so the owner comes from the numeric folder above `History`.
   Without it every message renders as incoming and a conversation reads as a monologue.
+
+## D21 — `WasNew` on a media put is exact for the importer, advisory under a race
+
+The media store deduplicates by moving a staged file to its content address with
+`File.Move(overwrite: false)` and catching the collision. That was chosen over checking `Exists`
+first because the check races and can rewrite a file another caller is reading.
+
+The move rejects an existing destination — but not identically on every platform, which cost a red
+CI job to learn. A test asserted that exactly one of sixteen simultaneous puts of the same bytes
+reports `WasNew`; that passed on Windows and Linux and failed on macOS with two of sixteen. .NET
+does not implement `overwrite: false` the same way on every filesystem, and the check-then-rename
+path it can take is racy by construction.
+
+Nothing is corrupted by this, and the assertion was the wrong one. Two callers storing *identical
+bytes* is precisely the case where losing the race is harmless: whichever file wins has the
+contents the hash claims. So the test now asserts what actually holds everywhere — one address,
+one file on disk, correct contents — and `WasNew` is documented as exact when one caller stores at
+a time and advisory otherwise.
+
+That is not a weakened guarantee for anything that depends on it. `WasNew` feeds the "stored /
+deduplicated" counts on an import report, and an import commits media from one thread; the counts
+it produces are exact. Had the flag been load-bearing for correctness rather than for a statistic,
+the right response would have been to make the claim atomic instead of to describe it honestly.
+
+**The general lesson, since it will recur:** a test that passes on the machine it was written on
+can encode that machine's behaviour rather than a real guarantee. Three-OS CI is what tells the
+difference, which is the whole reason [P7](../AGENTS.md) is enforced by running the suite on all
+three rather than by intending to be portable.

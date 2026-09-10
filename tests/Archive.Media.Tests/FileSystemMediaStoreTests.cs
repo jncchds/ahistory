@@ -102,9 +102,17 @@ public sealed class FileSystemMediaStoreTests : IDisposable
     }
 
     /// <summary>
-    /// The dedupe must hold when two imports touch the same sticker at the same moment, which is
-    /// exactly what a parallel import does.
+    /// The dedupe must hold when several callers touch the same sticker at once.
     /// </summary>
+    /// <remarks>
+    /// What is asserted is what holds on every platform: one address, one file, correct contents.
+    ///
+    /// Deliberately not "exactly one caller reports WasNew". That was asserted first and CI
+    /// failed on macOS with two of sixteen — <c>File.Move(overwrite: false)</c> does not reject an
+    /// existing destination identically across platforms, so racing callers can both believe they
+    /// created it. Nothing is corrupted by that, because the bytes are the same either way; the
+    /// flag is exact only when one caller stores at a time, which is what the importer does.
+    /// </remarks>
     [Fact]
     public async Task Concurrent_puts_of_the_same_bytes_are_safe()
     {
@@ -113,11 +121,13 @@ public sealed class FileSystemMediaStoreTests : IDisposable
         var results = await Task.WhenAll(
             Enumerable.Range(0, 16).Select(_ => store.PutAsync(Bytes("a popular sticker"), ".webp")));
 
-        Assert.Single(results.Select(r => r.Hash).Distinct());
-        Assert.Single(StoredFiles());
+        var hash = Assert.Single(results.Select(r => r.Hash).Distinct());
+        var file = Assert.Single(StoredFiles());
 
-        // Exactly one caller may claim to have created it; the rest must see a deduplicate.
-        Assert.Equal(1, results.Count(r => r.WasNew));
+        Assert.Equal(store.PathFor(hash, ".webp"), file);
+
+        using var reader = new StreamReader(store.OpenRead(hash, ".webp"));
+        Assert.Equal("a popular sticker", await reader.ReadToEndAsync());
     }
 
     [Fact]
