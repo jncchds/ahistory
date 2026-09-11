@@ -57,6 +57,22 @@ public sealed partial class ImportViewModel(
     [ObservableProperty]
     private string? _ownerAccountId;
 
+    /// <summary>
+    /// Which of the formats in the folder to read, when it holds more than one.
+    /// </summary>
+    /// <remarks>
+    /// A Takeout holds Hangouts and Google Chat side by side. Offered rather than hidden, because
+    /// the alternative is importing whichever was detected first and leaving the other unmentioned.
+    /// </remarks>
+    [ObservableProperty]
+    private ImportFormatOption? _selectedFormat;
+
+    public ObservableCollection<ImportFormatOption> Formats { get; } = [];
+
+    public bool HasSeveralFormats => Formats.Count > 1;
+
+    private bool _loadingFormats;
+
     public ObservableCollection<SourceChoice> SourceChoices { get; } = [];
 
     /// <summary>Accounts the export mentions that could be the user's.</summary>
@@ -96,10 +112,19 @@ public sealed partial class ImportViewModel(
         }
     }
 
+    partial void OnSelectedFormatChanged(ImportFormatOption? value)
+    {
+        if (!_loadingFormats && value is not null && value.Platform != Preview?.Platform)
+        {
+            _ = LoadPreviewAsync(value.Platform);
+        }
+    }
+
     /// <summary>
     /// Inspects the folder without writing anything, so the user can be asked where it belongs.
     /// </summary>
-    public Task LoadPreviewAsync() => RunAsync(async () =>
+    /// <param name="platform">Which format to read, when the folder holds several; null for the best.</param>
+    public Task LoadPreviewAsync(string? platform = null) => RunAsync(async () =>
     {
         Result = null;
         Preview = null;
@@ -114,8 +139,29 @@ public sealed partial class ImportViewModel(
             return;
         }
 
-        var preview = await Task.Run(() => runner.Preview(folder)).ConfigureAwait(true);
+        var preview = await Task.Run(() => runner.Preview(folder, platform)).ConfigureAwait(true);
         Preview = preview;
+
+        _loadingFormats = true;
+
+        try
+        {
+            Formats.Clear();
+            Formats.Add(new ImportFormatOption(preview.Platform, preview.PlatformName));
+
+            foreach (var other in preview.OtherFormats)
+            {
+                Formats.Add(other);
+            }
+
+            SelectedFormat = Formats[0];
+        }
+        finally
+        {
+            _loadingFormats = false;
+        }
+
+        OnPropertyChanged(nameof(HasSeveralFormats));
 
         foreach (var source in preview.ExistingSources)
         {
@@ -159,6 +205,7 @@ public sealed partial class ImportViewModel(
     private async Task Import()
     {
         var folder = ExportFolder;
+        var platform = Preview?.Platform;
         var sourceId = SelectedSource?.Id;
         var ownerAccount = string.IsNullOrWhiteSpace(OwnerAccountId) ? null : OwnerAccountId.Trim();
 
@@ -182,7 +229,8 @@ public sealed partial class ImportViewModel(
                 folder,
                 progress => Report(progress),
                 sourceId: sourceId,
-                ownerAccountId: ownerAccount)).ConfigureAwait(true);
+                ownerAccountId: ownerAccount,
+                platform: platform)).ConfigureAwait(true);
 
             Result = stats;
             ProgressText = string.Empty;

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             xmlns:import="clr-namespace:Archive.Import;assembly=Archive.Import"
              x:Class="Archive.Ui.Views.ImportView"
              x:DataType="vm:ImportViewModel">
 
@@ -37,6 +38,21 @@
         <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
                    IsVisible="{Binding Preview.FormatNote, Converter={x:Static ObjectConverters.IsNotNull}}"
                    Text="{Binding Preview.FormatNote}" />
+
+        <!-- A Takeout holds Hangouts and Google Chat together; importing one must not hide the other. -->
+        <StackPanel Spacing="4" IsVisible="{Binding HasSeveralFormats}">
+          <TextBlock TextWrapping="Wrap" Text="{Binding Preview.OtherFormatsNote}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Read as" VerticalAlignment="Center" />
+            <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" MinWidth="200">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="import:ImportFormatOption">
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+        </StackPanel>
       </StackPanel>
 
       <!-- Which source this belongs to is a question, not a deduction (decisions.md D11). -->

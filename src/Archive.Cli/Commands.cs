@@ -250,13 +250,23 @@ internal static class Commands
         // Which account is yours, for the formats that never say (VK, QIP). Without it the
         // importer uses a placeholder and says so, rather than inventing an owner.
         var ownerAccount = Option(args, "--me");
-        var preview = runner.Preview(args[2]);
+
+        // Which format to read, when the folder holds more than one — a Takeout with Hangouts and
+        // Google Chat side by side, a Meta download with Messenger and Instagram.
+        var format = Option(args, "--format");
+        var preview = runner.Preview(args[2], format);
 
         Console.WriteLine($"format   {preview.PlatformName} ({preview.FileCount:N0} file(s))");
 
         if (preview.FormatNote is { } note)
         {
             Console.WriteLine($"         {note}");
+        }
+
+        foreach (var other in preview.OtherFormats)
+        {
+            Console.WriteLine(
+                $"also     {other.DisplayName} — not read by this run; import again with --format {other.Platform}");
         }
 
         Console.WriteLine($"source   {chosenSource ?? preview.SuggestedSourceId}");
@@ -335,6 +345,7 @@ internal static class Commands
             Console.Write($"\r{progress.MessagesSeen,9:N0} messages  {Truncate(progress.CurrentChat, 32),-32}");
         },
         sourceId: chosenSource,
+        platform: format,
         storeRawJson: !args.Contains("--no-raw-json"),
         ownerAccountId: ownerAccount);
 
@@ -861,7 +872,7 @@ internal static class Commands
               ahistory init <save.db> [--upgrade] [--no-backup]
                                     create a save, or carry an older one forward
               ahistory hash <file>              show the content address a file would take
-              ahistory import <save.db> <folder> [--source <id>] [--me <id>] [--no-raw-json]
+              ahistory import <save.db> <folder> [--source <id>] [--me <id>] [--format <platform>] [--no-raw-json]
                                                 import an export folder; the format is detected.
                                                 --me names your own account for the formats that
                                                 do not state one (VK, QIP)

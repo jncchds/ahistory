@@ -50,11 +50,28 @@ public sealed class ImporterRegistry
     /// like an export I know" — a far better failure than picking the least-wrong importer and
     /// producing an archive full of nonsense.
     /// </remarks>
-    public ImporterMatch? Detect(string path)
+    public ImporterMatch? Detect(string path) => DetectAll(path).FirstOrDefault();
+
+    /// <summary>
+    /// Every importer that recognizes something in this folder, most confident first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One folder can hold two exports. A Google Takeout carries Hangouts and Google Chat side by
+    /// side, and a Meta download carries Messenger and Instagram. Returning only the best match
+    /// imported half a history and said nothing about the rest — the silent loss D20 exists to
+    /// prevent, arriving through the registry instead of through a reader.
+    /// </para>
+    /// <para>
+    /// Ties keep registration order, so the first element is exactly what <see cref="Detect"/>
+    /// has always returned.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ImporterMatch> DetectAll(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        ImporterMatch? best = null;
+        var matches = new List<ImporterMatch>();
 
         foreach (var importer in Importers)
         {
@@ -70,18 +87,14 @@ public sealed class ImporterRegistry
                 continue;
             }
 
-            if (detection.Confidence == ImportConfidence.None)
+            if (detection.Confidence != ImportConfidence.None)
             {
-                continue;
-            }
-
-            if (best is null || detection.Confidence > best.Detection.Confidence)
-            {
-                best = new ImporterMatch(importer, detection);
+                matches.Add(new ImporterMatch(importer, detection));
             }
         }
 
-        return best;
+        // OrderByDescending is stable, which is what keeps registration order as the tie-break.
+        return [.. matches.OrderByDescending(m => m.Detection.Confidence)];
     }
 
     public IPlatformImporter For(string platform) =>

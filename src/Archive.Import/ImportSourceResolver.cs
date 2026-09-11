@@ -23,7 +23,11 @@ namespace Archive.Import;
 /// </remarks>
 public static class ImportSourceResolver
 {
-    public static ImportPreview Preview(Database database, string exportFolder, ImporterMatch match)
+    /// <param name="others">
+    /// Other exports found in the same folder, which this run will not read.
+    /// </param>
+    public static ImportPreview Preview(
+        Database database, string exportFolder, ImporterMatch match, IReadOnlyList<ImporterMatch>? others = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(match);
@@ -74,6 +78,7 @@ public static class ImportSourceResolver
             PlatformName = match.DisplayName,
             FileCount = match.Detection.FileCount,
             FormatNote = match.Detection.Note,
+            OtherFormats = [.. (others ?? []).Select(o => new ImportFormatOption(o.Platform, o.DisplayName))],
             DetectedAccountId = accountId,
             DetectedAccountName = accountName,
             DetectedAccountIsGuess = match.Detection.AccountIdIsGuess,

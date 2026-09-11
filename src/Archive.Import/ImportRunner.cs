@@ -39,11 +39,15 @@ public sealed class ImportRunner(
     /// Detection is cheap by contract — filenames and at most a few kilobytes — so this stays
     /// instant even when pointed at a folder holding a decade of archives.
     /// </remarks>
-    public ImportPreview Preview(string exportFolder)
+    /// <param name="exportFolder">The folder the export unpacked into.</param>
+    /// <param name="platform">
+    /// Which format to read, when the folder holds more than one. Null takes the most confident.
+    /// </param>
+    public ImportPreview Preview(string exportFolder, string? platform = null)
     {
-        var (folder, match) = Locate(exportFolder);
+        var (folder, match, others) = Locate(exportFolder, platform);
 
-        return ImportSourceResolver.Preview(_database, folder, match);
+        return ImportSourceResolver.Preview(_database, folder, match, others);
     }
 
     /// <summary>
@@ -67,16 +71,21 @@ public sealed class ImportRunner(
     /// Which account on this platform is the archive owner's, for the formats that do not say.
     /// Null leaves the importer to work it out — and to say so, rather than to invent one.
     /// </param>
+    /// <param name="platform">
+    /// Which format to read, when the folder holds more than one. Null takes the most confident,
+    /// which is what the preview showed.
+    /// </param>
     public ImportStats Run(
         string exportFolder,
         Action<ImportProgress>? onProgress = null,
         int batchSize = 1000,
         string? sourceId = null,
         bool storeRawJson = true,
-        string? ownerAccountId = null)
+        string? ownerAccountId = null,
+        string? platform = null)
     {
-        var (folder, match) = Locate(exportFolder);
-        var preview = ImportSourceResolver.Preview(_database, folder, match);
+        var (folder, match, others) = Locate(exportFolder, platform);
+        var preview = ImportSourceResolver.Preview(_database, folder, match, others);
 
         var resolvedSource = sourceId ?? preview.SuggestedSourceId;
 
@@ -144,8 +153,9 @@ public sealed class ImportRunner(
         }
     }
 
-    /// <summary>Finds the folder and the importer that reads it.</summary>
-    private (string Folder, ImporterMatch Match) Locate(string exportFolder)
+    /// <summary>Finds the folder, the importer that reads it, and any other export sharing it.</summary>
+    private (string Folder, ImporterMatch Match, IReadOnlyList<ImporterMatch> Others) Locate(
+        string exportFolder, string? platform)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exportFolder);
 
@@ -156,7 +166,16 @@ public sealed class ImportRunner(
             throw new DirectoryNotFoundException($"No such export folder: {folder}");
         }
 
-        var match = _registry.Detect(folder);
+        var matches = _registry.DetectAll(folder);
+
+        var match = platform is null
+            ? matches.FirstOrDefault()
+            : matches.FirstOrDefault(m => m.Platform == platform)
+                ?? throw new InvalidDataException(
+                    $"'{folder}' holds no {platform} export. "
+                    + (matches.Count == 0
+                        ? "Nothing in it was recognized."
+                        : "It holds: " + string.Join(", ", matches.Select(m => m.Platform)) + "."));
 
         if (match is null)
         {
@@ -169,7 +188,7 @@ public sealed class ImportRunner(
                 + "containing result.json, exported as JSON rather than HTML (§2).");
         }
 
-        return (folder, match);
+        return (folder, match, [.. matches.Where(m => !ReferenceEquals(m.Importer, match.Importer))]);
     }
 
     /// <summary>

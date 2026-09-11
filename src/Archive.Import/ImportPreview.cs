@@ -21,6 +21,9 @@ public sealed record ImportSourceOption(
     public string DisplayName => Label ?? Id;
 }
 
+/// <summary>A format found in an export folder, as the preview offers it.</summary>
+public sealed record ImportFormatOption(string Platform, string DisplayName);
+
 /// <summary>
 /// What an export folder looks like before anything is written, so the user can be asked where
 /// it belongs.
@@ -48,6 +51,23 @@ public sealed record ImportPreview
     /// here. Someone importing a decade-old history deserves to know which readers are guesses.
     /// </remarks>
     public string? FormatNote { get; init; }
+
+    /// <summary>
+    /// Other exports in the same folder, which this import will not read.
+    /// </summary>
+    /// <remarks>
+    /// A Takeout holds Hangouts and Google Chat together; a Meta download holds Messenger and
+    /// Instagram. Importing one and saying nothing about the other is a history that looks
+    /// complete and is half there.
+    /// </remarks>
+    public IReadOnlyList<ImportFormatOption> OtherFormats { get; init; } = [];
+
+    /// <summary>The sentence the UI shows when <see cref="OtherFormats"/> is not empty.</summary>
+    public string? OtherFormatsNote => OtherFormats.Count == 0
+        ? null
+        : $"This folder also holds {string.Join(" and ", OtherFormats.Select(f => f.DisplayName))}. "
+          + $"Only {PlatformName} is imported now — import the folder again and choose "
+          + (OtherFormats.Count == 1 ? "it" : "each of them") + " to bring in the rest.";
 
     /// <summary>The account the export identifies itself as belonging to, when it says.</summary>
     public string? DetectedAccountId { get; init; }

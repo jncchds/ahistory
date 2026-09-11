@@ -62,6 +62,9 @@ The fix is small: let `Detect` return every non-`None` match, and have the previ
 folder contains two exports". This is the highest-impact item in this file, and it is worth
 doing whether or not another platform is ever added.
 
+**Done.** `ImporterRegistry.DetectAll` returns every match; the preview names the others, the
+import page offers "Read as", and the CLI takes `--format <platform>`.
+
 ### G2 — One importer is one platform id, and one format can be two platforms
 
 Meta's Messenger and Instagram threads are the same JSON, but they must not share an identity

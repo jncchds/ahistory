@@ -41,6 +41,47 @@ public sealed class MultiPlatformTests
     }
 
     /// <summary>
+    /// One folder, two exports. Detecting only the best one imported half a history and said
+    /// nothing about the rest.
+    /// </summary>
+    [Fact]
+    public void A_folder_holding_two_exports_names_both()
+    {
+        var folder = Fixtures.Temp("multi-two");
+        Exports.Hangouts().Write(Path.Combine(folder, "Hangouts"));
+        Exports.Vk().Write(folder);
+
+        var matches = new ImporterRegistry().DetectAll(folder);
+
+        Assert.Equal(["hangouts", "vk"], matches.Select(m => m.Platform));
+
+        using var save = new TempSave();
+        var preview = save.Runner.Preview(folder);
+
+        Assert.Equal("hangouts", preview.Platform);
+        Assert.Equal("vk", Assert.Single(preview.OtherFormats).Platform);
+        Assert.Contains("VKontakte", preview.OtherFormatsNote, StringComparison.Ordinal);
+    }
+
+    /// <summary>The second export in a folder is imported by asking for it by name.</summary>
+    [Fact]
+    public void The_other_export_in_a_folder_can_be_chosen()
+    {
+        var folder = Fixtures.Temp("multi-choose");
+        Exports.Hangouts().Write(Path.Combine(folder, "Hangouts"));
+        Exports.Vk().Write(folder);
+
+        using var save = new TempSave();
+
+        save.Runner.Run(folder);
+        save.Runner.Run(folder, platform: "vk");
+
+        Assert.Equal(2, save.Scalar<long>("SELECT count(DISTINCT platform) FROM thread;"));
+
+        Assert.Throws<InvalidDataException>(() => save.Runner.Preview(folder, "qip"));
+    }
+
+    /// <summary>
     /// A folder nothing recognizes is refused by name rather than guessed at. Picking the
     /// least-wrong importer would fill an archive with nonsense.
     /// </summary>
