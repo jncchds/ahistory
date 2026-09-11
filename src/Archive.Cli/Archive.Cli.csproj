@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Archive.Ai/Archive.Ai.csproj" />
     <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
     <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
     <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />

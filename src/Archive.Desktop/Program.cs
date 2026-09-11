@@ -1,3 +1,6 @@
+using Archive.Ai;
+using Archive.Ai.Jobs;
+using Archive.Ai.Llm;
 using Archive.Core;
 using Archive.Data;
 using Archive.Import;
@@ -76,6 +79,8 @@ internal static class Program
 
             App.Services = BuildContainer(options, database, loggerFactory);
 
+            StartAiIfEnabled(App.Services, log);
+
             var exitCode = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 
             log.LogInformation("ahistory exiting with code {ExitCode}.", exitCode);
@@ -135,17 +140,100 @@ internal static class Program
         services.AddSingleton<ImportRunner>();
         services.AddSingleton<IFolderPicker, StorageFolderPicker>();
 
+        // The optional half. Removing this line and the project reference leaves an app that
+        // still builds and still opens every archive, which is AGENTS.md P1 as something a person
+        // can check rather than something a document asserts.
+        services.AddAi();
+
         // Pages are singletons: they hold the reader's place — which conversation is open, how
         // far back they have scrolled — and navigating away and back should not discard it.
-        services.AddSingleton<OverviewViewModel>();
-        services.AddSingleton<ImportViewModel>();
-        services.AddSingleton<PersonViewModel>();
-        services.AddSingleton<SearchViewModel>();
-        services.AddSingleton<PeopleViewModel>();
-        services.AddSingleton<ThreadsViewModel>();
+        //
+        // Each is also registered as a ViewModelBase, which is how the window receives them: it
+        // takes a collection rather than a list of named pages, so a feature can contribute one
+        // without the window being able to depend on that feature existing.
+        AddPage<OverviewViewModel>(services);
+        AddPage<ImportViewModel>(services);
+        AddPage<PersonViewModel>(services);
+        AddPage<SearchViewModel>(services);
+        AddPage<PeopleViewModel>(services);
+        AddPage<ThreadsViewModel>(services);
+        AddPage<AiSettingsViewModel>(services);
+        AddPage<AiStatsViewModel>(services);
+
+        // Not a page: the panel beside a conversation. Registered so the conversation page can
+        // take it, and simply absent from a build without the AI layer.
+        services.AddSingleton<FactsPanelViewModel>();
+
         services.AddSingleton<MainWindowViewModel>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Looks for work and starts on it, if the user has switched AI on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Composition, which is the head's job and the reason it is allowed to know AI exists at all
+    /// (decisions.md D31). Nothing in the UI asks for this; work is enqueued by invalidation, and
+    /// opening a save is one of the things that can have invalidated some.
+    /// </para>
+    /// <para>
+    /// An import is another, so the runner is told about those too. Without it, everything
+    /// imported today would sit unread until the app was next restarted.
+    /// </para>
+    /// </remarks>
+    private static void StartAiIfEnabled(IServiceProvider services, ILogger log)
+    {
+        var state = services.GetRequiredService<AiState>();
+        var work = services.GetRequiredService<AiWork>();
+        var runner = services.GetRequiredService<AiRunner>();
+        var factory = services.GetRequiredService<ILlmProviderFactory>();
+
+        // Wired whether or not AI is on right now, and each asks at the moment it runs: the user
+        // can switch AI on halfway through a session, and what they imported before that should
+        // not wait for a restart to be read.
+        services.GetRequiredService<ImportViewModel>().Imported += () =>
+        {
+            if (state.Current.Enabled)
+            {
+                work.PlanSegmentation();
+            }
+
+            return Task.CompletedTask;
+        };
+
+        state.Changed += (_, _) =>
+        {
+            if (state.Current.Enabled)
+            {
+                work.PlanSegmentation();
+            }
+        };
+
+        // Segmentation needs nobody's permission. Reading sessions with a model does, so follow-up
+        // extraction is queued on its own only for an endpoint the user has already said yes to
+        // (ai-plan.md §11.2). Until then the activity page's Start button is where it begins.
+        runner.Replan = () => AiConsent.CoversExtraction(state.Current, factory) ? work.PlanExtraction() : 0;
+
+        if (!state.Current.Enabled)
+        {
+            return;
+        }
+
+        var queued = work.PlanSegmentation();
+
+        log.LogInformation("AI is on; {Queued} job(s) queued at startup.", queued);
+
+        runner.Start();
+    }
+
+    /// <summary>Registers a page once, and again under the base type the window asks for.</summary>
+    private static void AddPage<TPage>(IServiceCollection services)
+        where TPage : ViewModelBase
+    {
+        services.AddSingleton<TPage>();
+        services.AddSingleton<ViewModelBase>(provider => provider.GetRequiredService<TPage>());
     }
 
     /// <summary>

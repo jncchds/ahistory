@@ -12,6 +12,9 @@ public sealed class SaveMeta
     public bool OwnerIsSelf { get; set; }
     public string? Provenance { get; set; }
     public string CreatedUtc { get; set; } = string.Empty;
+
+    /// <summary>This save is not to be read by a model, whatever the machine is set to (§9).</summary>
+    public bool AiOptOut { get; set; }
 }
 
 /// <summary>
@@ -53,6 +56,9 @@ public sealed class Person
     public bool IsOwner { get; set; }
     public string? Notes { get; set; }
     public string CreatedUtc { get; set; } = string.Empty;
+
+    /// <summary>Never profiled, and with a hosted endpoint never sent.</summary>
+    public bool AiExcluded { get; set; }
 }
 
 public sealed class Identity
@@ -84,6 +90,9 @@ public sealed class Thread
     public string? Title { get; set; }
     public string FirstImportId { get; set; } = string.Empty;
     public string CreatedUtc { get; set; } = string.Empty;
+
+    /// <summary>Never profiled, and with a hosted endpoint never sent.</summary>
+    public bool AiExcluded { get; set; }
 }
 
 public sealed class ThreadParticipant
@@ -119,6 +128,11 @@ public sealed class Session
     public long MessageCount { get; set; }
     public string MemberHash { get; set; } = string.Empty;
     public string SegmenterVersion { get; set; } = string.Empty;
+
+    /// <summary>Null until the logistics filter has looked at it (§6.2).</summary>
+    public bool? IsSubstantive { get; set; }
+
+    public string? FilterVersion { get; set; }
 }
 
 public sealed class Message

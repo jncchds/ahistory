@@ -37,9 +37,18 @@ keyword search, and standalone builds for all three desktop platforms.
 | M6 | Full-text search | ✅ |
 | M7 | Packaging for Windows, Linux and macOS | ✅ |
 
-Later: transcription and OCR, embeddings and hybrid search, session extraction, the knowledge
-base and diary. The V1 schema already carries the seams those need, so they arrive as new code
-rather than as a migration of everything.
+In progress: the AI layer. Configuration, providers and per-call statistics are in — switch it on,
+point it at a local or hosted model, and the app checks that the model can actually call tools
+before anything else is built on it. So is the work queue: the archive is split into sessions on
+gaps of silence, each is classified as worth reading or as logistics, and a background runner
+drains the queue while you read. None of that involves a model, which is why it was built first.
+Extraction is in too: a model reads each conversation worth reading and records what it says about
+the people in it, every fact citing the messages it came from, shown beside the conversation and
+correctable there — and nothing is sent to a model until you have been told how much, roughly what
+it costs, and where it goes. What comes next is fact merging, rollups and the diary, then embeddings
+and hybrid search, and transcription and OCR. The V1 schema already carries the seams those need, so they arrive as new code rather
+than as a migration of everything. The plan is in
+[docs/ai-plan.md](docs/ai-plan.md).
 
 ## How it works
 
@@ -165,6 +174,7 @@ src/
   Archive.Data      connections, pragmas, migrations, EF mapping, raw-SQL queries
   Archive.Media     content-addressed blob store
   Archive.Import    one reader per platform, normalizer, committer, export builders
+  Archive.Ai        optional: providers, settings, and the model calls made against them
   Archive.Logging   logging setup shared by both heads
   Archive.Cli       headless init/import — how the importers are proven without a UI
   Archive.Ui        Avalonia views and view models
@@ -187,6 +197,12 @@ then environment variables prefixed `AHISTORY_` with `__` for nesting — for ex
 `AHISTORY_Archive__DatabasePath`. Invalid configuration throws at startup rather than surfacing
 later as a broken window.
 
+AI settings live apart from all of that, in `ahistory/ai.json` beside the logs — one configuration
+per machine, shared by every save, and overridable with `AHISTORY_Ai__*`. They are deliberately not
+inside the archive: a save is meant to be copied between machines and sometimes handed to someone,
+and an API key inside it would travel with the correspondence. Nothing in the environment can
+switch AI on; that is a question the app asks once, in the window.
+
 ## Try it without an export
 
 If you have not exported your own archive yet, generate one that contains no real data:
@@ -203,6 +219,10 @@ everywhere. It cannot substitute for a real export when it comes to *parsing*, s
 produces shapes the importer already understands.
 
 `ahistory stats <save.db>` reports what an archive is made of and what it costs.
+
+`ahistory ai <save.db>` reports how much of it the AI layer has read. `--segment` splits it into
+sessions first — no model, no key and no network, which is what makes the queue and its coverage
+counts demonstrable before anything costs a token.
 
 ## Logs
 
@@ -237,13 +257,19 @@ them until allowed in System Settings.
 - **[docs/decisions.md](docs/decisions.md)** — every departure from that spec, with reasoning.
 - **[AGENTS.md](AGENTS.md)** — principles and conventions for anyone (or anything) writing code here.
 - **[docs/v1-plan.md](docs/v1-plan.md)** — the V1 implementation plan as originally approved, kept as a historical record.
+- **[docs/ai-plan.md](docs/ai-plan.md)** — the AI layer: configuration, the tool set, prompts, coverage, and the order the work happens in.
 - **[docs/importer-roadmap.md](docs/importer-roadmap.md)** — what adding more platforms would take, and what the importer contract cannot yet express. Analysis, not commitments.
 
 ## Privacy
 
 This is about as sensitive as personal data gets: your correspondence, and everyone who wrote to
-you. It never leaves your machine. There is no telemetry and no cloud component. When AI features
-arrive, a local model is the default and any hosted API is strictly opt-in.
+you. There is no telemetry and no cloud component, and with AI switched off — which is how it
+ships — nothing leaves your machine at all.
+
+Switching AI on means choosing an endpoint, and that choice is what decides whether anything is
+sent anywhere: point it at a model running on your own machine and it still never leaves. The app
+says so where the choice is made rather than in a policy document, and the settings that hold your
+API key are stored outside the archive, so a save you copy or hand to someone carries no key.
 
 If you are archiving correspondence that is not your own, the design has a
 [deliberate position on that](message-archive-design.md) — a save records where it came from, and

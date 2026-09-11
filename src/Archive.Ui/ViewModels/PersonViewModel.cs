@@ -15,7 +15,10 @@ namespace Archive.Ui.ViewModels;
 /// thread and never copied per participant.
 /// </remarks>
 public sealed partial class PersonViewModel(
-    ArchiveQueries queries, PersonConversation conversation, ILogger<PersonViewModel>? logger = null)
+    ArchiveQueries queries,
+    PersonConversation conversation,
+    ILogger<PersonViewModel>? logger = null,
+    FactsPanelViewModel? facts = null)
     : ViewModelBase(logger)
 {
     private const int PageSize = 100;
@@ -33,6 +36,19 @@ public sealed partial class PersonViewModel(
     public override string Title => "Conversations";
 
     public override string Glyph => "☰";
+
+    public override int Position => 30;
+
+    /// <summary>
+    /// What is known about the person being read, when there is an AI layer to know it.
+    /// </summary>
+    /// <remarks>
+    /// Null in a build or a test with no AI layer, which is a normal state and draws nothing. The
+    /// panel decides for itself whether AI is switched on.
+    /// </remarks>
+    public FactsPanelViewModel? Facts { get; } = facts;
+
+    private bool _factsWired;
 
     /// <summary>
     /// Raised when the stream has been rebuilt from the newest end.
@@ -137,10 +153,47 @@ public sealed partial class PersonViewModel(
 
     partial void OnSelectedPersonChanged(PersonRow? value)
     {
+        WireFacts();
+
+        if (Facts is not null)
+        {
+            _ = Facts.ShowAsync(value?.Id);
+        }
+
         if (!_suppressReload)
         {
             _pendingLoad = LoadFirstPageAsync();
         }
+    }
+
+    /// <summary>
+    /// Opens the message a fact was read from, when the panel asks.
+    /// </summary>
+    /// <remarks>
+    /// Wired on first use rather than in a constructor, because this class has a primary
+    /// constructor and so no body to do it in. A cited message may sit in someone else's stream —
+    /// a line in a group, said by another member — so it opens in whichever conversation it
+    /// belongs to, exactly as a search result does.
+    /// </remarks>
+    private void WireFacts()
+    {
+        if (_factsWired || Facts is null)
+        {
+            return;
+        }
+
+        _factsWired = true;
+
+        Facts.RevealRequested += async (_, messageId) =>
+        {
+            var target = await Task.Run(() => conversation.PersonOf(messageId)).ConfigureAwait(true)
+                ?? SelectedPerson?.Id;
+
+            if (target is not null)
+            {
+                await RevealAsync(target, messageId).ConfigureAwait(true);
+            }
+        };
     }
 
     partial void OnPersonFilterChanged(string? value) => _ = RefreshAsync();

@@ -1,0 +1,131 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             x:Class="Archive.Ui.Views.AiSettingsView"
+             x:DataType="vm:AiSettingsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16" Margin="24,20" MaxWidth="680" HorizontalAlignment="Left">
+
+      <TextBlock Classes="heading" Text="AI" />
+
+      <TextBlock Classes="subtle" TextWrapping="Wrap"
+                 Text="The archive works without any of this. Switching it on lets a language model read your messages and build facts and a diary from them, in the background, while you keep reading." />
+
+      <CheckBox Content="Enable AI features" IsChecked="{Binding Enabled}" />
+
+      <!--
+        Shown whenever AI is on, not just the first time. It is two sentences, and both of them
+        stay true every day the feature is enabled.
+      -->
+      <Border IsVisible="{Binding Enabled}"
+              Background="#33B8860B" BorderBrush="#B8860B" BorderThickness="1"
+              CornerRadius="4" Padding="12">
+        <StackPanel Spacing="8">
+          <TextBlock TextWrapping="Wrap" Text="{x:Static vm:AiSettingsViewModel.Disclaimer}" />
+          <CheckBox Content="I understand" IsChecked="{Binding DisclaimerAccepted}" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Provider" />
+        <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding Provider}"
+                  HorizontalAlignment="Stretch" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Endpoint" />
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="Load models" Margin="8,0,0,0"
+                  Command="{Binding LoadModelsCommand}" />
+          <TextBox Text="{Binding Endpoint}" PlaceholderText="Leave empty for this provider's default" />
+        </DockPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="API key" />
+        <TextBox Text="{Binding ApiKey}" PasswordChar="•"
+                 PlaceholderText="Leave empty for a local model" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="Stored in plain text in the settings file, which lives beside your logs and not inside the archive — so a save you copy or hand to someone carries no key." />
+      </StackPanel>
+
+      <!--
+        Freeform with suggestions, never a closed list: a gateway routinely serves models it does
+        not advertise, and a dropdown built from /models turns that into "your model does not exist".
+      -->
+      <StackPanel Spacing="6">
+        <TextBlock Text="Main model" />
+        <AutoCompleteBox Text="{Binding MainModel}" ItemsSource="{Binding ModelSuggestions}"
+                         FilterMode="Contains" MinimumPrefixLength="0"
+                         PlaceholderText="Must support tool calling" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Utility model (optional)" />
+        <AutoCompleteBox Text="{Binding UtilityModel}" ItemsSource="{Binding ModelSuggestions}"
+                         FilterMode="Contains" MinimumPrefixLength="0"
+                         PlaceholderText="Leave empty to use the main model" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="A cheaper model for the mechanical half of the work — reading sessions one at a time. Locally, a second model usually costs more in memory than it saves, so leaving this empty is normal." />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Embedding model" />
+        <AutoCompleteBox Text="{Binding EmbeddingModel}" ItemsSource="{Binding ModelSuggestions}"
+                         FilterMode="Contains" MinimumPrefixLength="0"
+                         PlaceholderText="Used by semantic search, later" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Write facts and diary in" />
+        <TextBox Text="{Binding OutputLanguage}" PlaceholderText="English" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="The language the model writes in. Your messages are read in whatever language they were written." />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Calls at once" />
+        <NumericUpDown Value="{Binding MaxParallelCalls}" Minimum="1" Maximum="16" Increment="1"
+                       Width="140" HorizontalAlignment="Left" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Text="Wait for an answer (seconds)" />
+        <NumericUpDown Value="{Binding TimeoutSeconds}" Minimum="10" Maximum="1800" Increment="30"
+                       Width="140" HorizontalAlignment="Left" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="How long one call may take before it is retried. A local model that has to load from a hard drive can need several minutes for its first answer." />
+      </StackPanel>
+
+      <StackPanel Spacing="4">
+        <CheckBox Content="Record the full text of every request and response"
+                  IsChecked="{Binding RecordPromptBodies}" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="For debugging a prompt. It puts your messages into the archive a second time, in a form that is much easier to read out of by accident — leave it off unless you are looking at something." />
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Classes="accent" Content="Save" Command="{Binding SaveCommand}"
+                IsEnabled="{Binding CanSave}" />
+        <Button Content="Test connection" Command="{Binding TestConnectionCommand}" />
+        <Button Content="Revert" Command="{Binding RevertCommand}" />
+        <ProgressBar IsIndeterminate="True" Width="120" VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+
+      <TextBlock TextWrapping="Wrap"
+                 IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Status}" />
+
+      <TextBlock Foreground="IndianRed" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+
+      <TextBlock Classes="faint" TextWrapping="Wrap"
+                 Text="{Binding SettingsPath, StringFormat='Settings file: {0}'}" />
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

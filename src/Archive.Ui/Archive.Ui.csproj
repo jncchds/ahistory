@@ -4,6 +4,7 @@
   <!-- Avalonia packages arrive in M4; this project is a stub until then. -->
 
   <ItemGroup>
+    <ProjectReference Include="../Archive.Ai/Archive.Ai.csproj" />
     <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
     <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
     <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />

@@ -39,6 +39,8 @@ public sealed partial class PeopleViewModel(
 
     public override string Glyph => "☺";
 
+    public override int Position => 50;
+
     /// <summary>The people the list is showing, after the search box and the filter.</summary>
     public ObservableCollection<PersonRow> People { get; } = [];
 

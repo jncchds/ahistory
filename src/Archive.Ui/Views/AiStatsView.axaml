@@ -1,0 +1,112 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             x:Class="Archive.Ui.Views.AiStatsView"
+             x:DataType="vm:AiStatsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16" Margin="24,20">
+
+      <TextBlock Classes="heading" Text="AI activity" />
+
+      <!-- §7: coverage first, because "how much of this has been read" is the question, and the
+           call counts below it are how the answer was arrived at. -->
+      <StackPanel Spacing="8">
+        <TextBlock TextWrapping="Wrap" Text="{Binding CoverageLine}" />
+        <ProgressBar Minimum="0" Maximum="1" Value="{Binding CoverageFraction}"
+                     Height="6" HorizontalAlignment="Stretch" />
+        <TextBlock Classes="subtle" Text="{Binding QueueLine}" />
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <!-- Always there: the runner idles between jobs, so "running" is not "busy", and hiding
+             this while it runs left no way to reach the question below. -->
+        <Button Classes="accent" Content="Look for work" Command="{Binding StartCommand}" />
+        <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding IsWorking}" />
+        <ProgressBar IsIndeterminate="True" Width="120" VerticalAlignment="Center"
+                     IsVisible="{Binding IsWorking}" />
+      </StackPanel>
+
+      <!--
+        §11.2: before a model reads anything, one question with the scope, the cost and the
+        destination in it. Asked once per endpoint; segmentation carries on meanwhile, because it
+        sends nothing anywhere.
+      -->
+      <Border IsVisible="{Binding NeedsConfirmation}"
+              Background="#33B8860B" BorderBrush="#B8860B" BorderThickness="1"
+              CornerRadius="4" Padding="12">
+        <StackPanel Spacing="10">
+          <TextBlock TextWrapping="Wrap" Text="{Binding ConfirmationText}" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Classes="accent" Content="Read them" Command="{Binding ConfirmCommand}" />
+            <Button Content="Not now" Command="{Binding DeclineCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="faint" TextWrapping="Wrap"
+                 Text="Work happens only while this app is open, and stopping is free — a job that was interrupted is picked up again next time, not started over." />
+
+      <Border Background="{DynamicResource DividerBrush}" Height="1" Margin="0,4" />
+
+      <TextBlock Classes="stat" Text="{Binding Summary}" />
+
+      <!-- No money column: prices depend on an endpoint the user configured and change without
+           notice, so a figure here would be a confident wrong number about their bill. -->
+      <Grid ColumnDefinitions="*,110,110,140,120" Margin="0,4,0,0">
+        <TextBlock Grid.Column="0" Classes="faint" Text="WHAT" />
+        <TextBlock Grid.Column="1" Classes="faint" Text="CALLS" TextAlignment="Right" />
+        <TextBlock Grid.Column="2" Classes="faint" Text="FAILED" TextAlignment="Right" />
+        <TextBlock Grid.Column="3" Classes="faint" Text="TOKENS" TextAlignment="Right" />
+        <TextBlock Grid.Column="4" Classes="faint" Text="MEDIAN" TextAlignment="Right" />
+      </Grid>
+
+      <ItemsControl ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:AiStatRow">
+            <Grid ColumnDefinitions="*,110,110,140,120" Margin="0,3">
+              <TextBlock Grid.Column="0" Text="{Binding Purpose}" />
+              <TextBlock Grid.Column="1" Text="{Binding Calls}" TextAlignment="Right" />
+              <TextBlock Grid.Column="2" Text="{Binding Failures}" TextAlignment="Right" />
+              <TextBlock Grid.Column="3" Text="{Binding Tokens}" TextAlignment="Right" />
+              <TextBlock Grid.Column="4" Text="{Binding Median}" TextAlignment="Right" Classes="subtle" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <StackPanel Spacing="6" IsVisible="{Binding Failures.Count}">
+        <TextBlock Text="Failures" FontWeight="SemiBold" />
+        <ItemsControl ItemsSource="{Binding Failures}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="subtle" Text="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <Border IsVisible="{Binding RecordsPromptBodies}"
+              Background="#33B8860B" BorderBrush="#B8860B" BorderThickness="1"
+              CornerRadius="4" Padding="12">
+        <TextBlock TextWrapping="Wrap"
+                   Text="Full request and response text is being recorded. That puts your messages into this archive a second time. Turn it off on the AI page when you are done debugging." />
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="Clear statistics" Command="{Binding ClearCommand}" />
+        <ProgressBar IsIndeterminate="True" Width="120" VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+
+      <TextBlock Classes="faint" TextWrapping="Wrap"
+                 Text="These are counts, durations and error kinds — nothing here quotes a message. Clearing them affects nothing else in the archive." />
+
+      <TextBlock Foreground="IndianRed" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 Text="{Binding Error}" />
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

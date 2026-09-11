@@ -853,3 +853,44 @@ temporary. `NoArchiveDataInTheRepositoryTests` sweeps the tree for `result.json`
 What this does not change: a builder written from a misreading of a format will agree with a reader
 written from the same misreading (D22). Builders keep a confirmed format from drifting. Only a real
 export confirms one.
+
+---
+
+## D31 — AI is a switch and a page, not a project boundary
+
+The original rule was that AI lived in its own projects which the spine — including `Archive.Ui`
+and `Archive.Desktop` — must never reference. It sounded like the strongest possible reading of P1
+and turned out to be the wrong one.
+
+What it actually bought was very little. The thing worth protecting is that a user who never
+enables any of this is not shipped a model runtime: `sqlite-vec` and `Whisper.net` are native,
+per-RID binaries in a build already over 100 MB per platform, and once they are referenced from
+`Archive.Data` they ship and load for everyone. That is a rule about **packages in the storage
+layer**, and it survives unchanged.
+
+What the direction rule cost was a settings page nobody could reach. AI has to be switched on
+somewhere, which means a page, which means a view model, which means either `Archive.Ui` knows the
+AI project exists or an entire plug-in seam is invented to pretend it does not. The second is more
+code, more indirection, and no more true.
+
+So: `Archive.Ui` references `Archive.Ai` and AI pages are ordinary pages. P1 is now stated
+behaviourally, which is what it always meant — with the switch off there is no model, no process,
+no network call, and nothing of it in the rail. That is checked by `AiPageTests` against the real
+view models rather than by reading a csproj, and it catches things the old rule never could: a page
+that lingers in the rail after AI is turned off, or a reader thrown out of a conversation because
+a page appeared above the one they were on.
+
+Two consequences worth writing down:
+
+- **The settings page is always present.** It is where the switch is, and a switch you cannot reach
+  is not one. Every other AI page — statistics now, facts and the diary later — is bound to the
+  enabled flag and simply is not there when it is off.
+- **`Database` will grow an extension hook.** `sqlite-vec` is a SQLite extension and AGENTS.md
+  requires every connection to go through `Database`, so the load has to happen there while the
+  package must not. The hook is filled in by `Archive.Ai` at startup when AI is enabled, and a save
+  opened with AI off never loads it.
+
+`SolutionLayoutTests.No_core_project_takes_an_ai_dependency` is now
+`No_storage_project_takes_an_ai_dependency`, joined by `No_storage_project_references_the_ai_project`
+— which the package rule would not catch, because talking to an OpenAI-shaped endpoint needs no
+package at all.

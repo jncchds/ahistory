@@ -1,3 +1,8 @@
+using Archive.Ai;
+using Archive.Ai.Extraction;
+using Archive.Ai.Jobs;
+using Archive.Ai.Llm;
+using Archive.Ai.Sessions;
 using Archive.Core;
 using Archive.Data;
 using Archive.Import;
@@ -31,6 +36,7 @@ internal static class Commands
                 "sources" => Sources(args),
                 "synth" => Synth(args),
                 "stats" => Stats(args),
+                "ai" => Ai(args),
                 "--help" or "-h" or "help" => Usage(),
                 _ => Unknown(args[0]),
             };
@@ -528,6 +534,179 @@ internal static class Commands
     private static string Truncate(string value, int length) =>
         value.Length <= length ? value : value[..(length - 1)] + "…";
 
+    /// <summary>
+    /// Reports what the AI layer has read of an archive, and optionally reads more of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Segmentation needs no model, no key and no network, which is what makes it demonstrable
+    /// here: the queue, the priority order, resumability and the coverage counts can all be seen
+    /// working before anything costs a token.
+    /// </para>
+    /// <para>
+    /// It uses the same runner the app uses rather than calling the segmenter directly, because a
+    /// command-line drain and a drain nobody is watching must not be able to behave differently.
+    /// </para>
+    /// </remarks>
+    private static int Ai(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("usage: ahistory ai <path-to-save.db> [--segment]");
+            return 2;
+        }
+
+        var options = new ArchiveOptions { DatabasePath = args[1] };
+        options.Validate();
+
+        var database = new Database(options);
+        database.Migrate();
+
+        var coverage = new AiCoverage(database);
+        var jobs = new AiJobs(database);
+
+        if (args.Contains("--segment"))
+        {
+            var segmenter = new SessionSegmenter(database);
+
+            // Drains directly rather than starting the background loop: the loop is what the
+            // enabled switch governs, and typing this command is the decision the switch stands
+            // in for. Nothing here calls a model, so there is nothing else to consent to.
+            using var runner = new AiRunner(
+                jobs, new AiState(new AiSettingsStore()), [new SegmentJobHandler(segmenter)]);
+
+            var queued = new AiWork(database, jobs, segmenter, runner).PlanSegmentation();
+
+            Console.WriteLine($"queued   {queued:N0} thread(s)");
+
+            var started = DateTime.UtcNow;
+            var handled = runner.DrainAsync().GetAwaiter().GetResult();
+            var elapsed = DateTime.UtcNow - started;
+
+            Console.WriteLine($"read     {handled:N0} thread(s) in {elapsed.TotalSeconds:N1}s");
+        }
+
+        if (args.Contains("--extract"))
+        {
+            var code = Extract(database, jobs, args);
+
+            if (code != 0)
+            {
+                return code;
+            }
+        }
+
+        var summary = coverage.Summary();
+        var counts = jobs.Counts();
+
+        Console.WriteLine($"threads  {summary.ThreadsSegmented:N0} of {summary.Threads:N0} split into sessions");
+        Console.WriteLine($"messages {summary.MessagesInSessions:N0} of {summary.Messages:N0} in a session");
+        Console.WriteLine($"sessions {summary.Sessions:N0}, of which {summary.Substantive:N0} look worth reading");
+        Console.WriteLine($"queue    {counts.Pending:N0} waiting, {counts.Done:N0} done, {counts.Failed:N0} failed");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Reads sessions with the configured model, as the background runner would.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This one costs money and sends correspondence to whatever endpoint is configured, so unlike
+    /// segmentation it refuses to run until AI is switched on and pointed at a model. The command
+    /// is not a way around the consent step; it is a way to watch it work.
+    /// </para>
+    /// <para>
+    /// <c>--limit</c> exists because reading a real archive is an evening's work and a
+    /// demonstration should be a minute's. Stopping early is free — the sessions that were read
+    /// stay read, and the rest are still queued.
+    /// </para>
+    /// </remarks>
+    private static int Extract(Database database, AiJobs jobs, string[] args)
+    {
+        var state = new AiState(new AiSettingsStore());
+
+        if (!state.Current.IsUsable)
+        {
+            Console.Error.WriteLine(
+                "error: AI is not configured. Switch it on and choose a model in the app first.");
+            return 1;
+        }
+
+        var factory = new LlmProviderFactory();
+
+        // The same agreement the window asks for, asked here by flag. Typing --extract says "read
+        // these", not "and send them wherever the settings happen to point" — so without a yes for
+        // this endpoint, nothing is sent, and --consent is how to give one.
+        if (!AiConsent.CoversExtraction(state.Current, factory))
+        {
+            var destination = AiConsent.Destination(state.Current, factory);
+
+            if (!args.Contains("--consent"))
+            {
+                Console.Error.WriteLine(
+                    $"error: sending archive text to {destination} has not been agreed to. Press Start "
+                    + "on the AI activity page, or pass --consent to agree for this endpoint.");
+                return 1;
+            }
+
+            var agreed = state.Current.Clone();
+            agreed.ExtractionConfirmedFor = destination;
+            state.Update(agreed);
+
+            Console.WriteLine($"agreed   archive text may be sent to {destination}");
+        }
+
+        var limit = Limit(args);
+        var client = new AiClient(factory, new AiInteractions(database));
+
+        var extractor = new ExtractRunner(
+            client, new ExtractionWindows(database), new FactWriter(database),
+            _loggerFactory.CreateLogger<ExtractRunner>());
+
+        using var runner = new AiRunner(jobs, state, [new ExtractJobHandler(extractor, state, factory)]);
+
+        var segmenter = new SessionSegmenter(database);
+        var queued = new AiWork(database, jobs, segmenter, runner).PlanExtraction();
+
+        Console.WriteLine($"queued   {queued:N0} session(s) to read with {state.Current.ModelFor(AiWorkKind.Utility)}");
+
+        var started = DateTime.UtcNow;
+        var handled = runner.DrainAsync(limit).GetAwaiter().GetResult();
+        var elapsed = DateTime.UtcNow - started;
+
+        Console.WriteLine(
+            $"read     {handled:N0} session(s) in {elapsed.TotalSeconds:N1}s"
+            + (handled == 0 ? string.Empty : $" ({elapsed.TotalSeconds / handled:N1}s each)"));
+
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT (SELECT count(*) FROM fact WHERE retracted_utc IS NULL),
+                   (SELECT count(*) FROM fact_citation),
+                   (SELECT count(*) FROM derived_artifact WHERE kind = 'session_extract');
+            """;
+
+        using var reader = command.ExecuteReader();
+        reader.Read();
+
+        Console.WriteLine($"facts    {reader.GetInt64(0):N0} from {reader.GetInt64(2):N0} session(s), "
+            + $"{reader.GetInt64(1):N0} citation(s)");
+
+        return 0;
+    }
+
+    /// <summary>How many jobs a drain may take, from <c>--limit N</c>. Unbounded without it.</summary>
+    private static int Limit(string[] args)
+    {
+        var index = Array.IndexOf(args, "--limit");
+
+        return index >= 0 && index + 1 < args.Length && int.TryParse(args[index + 1], out var limit)
+            ? limit
+            : int.MaxValue;
+    }
+
     private static int Unknown(string command)
     {
         Console.Error.WriteLine($"error: unknown command '{command}'");
@@ -550,6 +729,11 @@ internal static class Commands
                                                 do not state one (VK, QIP)
               ahistory sources <save.db>        list the sources in a save
               ahistory stats <save.db>          what the archive is made of
+              ahistory ai <save.db> [--segment] [--extract] [--limit N]
+                                                what the AI layer has read of this archive.
+                                                --segment splits it into sessions (no model);
+                                                --extract reads them with the configured model;
+                                                --consent agrees to send text to that endpoint
               ahistory synth <folder> [--messages N] [--chats N]
                                                 write a synthetic export (no real data;
                                                 --messages is an upper bound)

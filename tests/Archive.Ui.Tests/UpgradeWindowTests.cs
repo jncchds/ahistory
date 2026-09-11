@@ -34,8 +34,25 @@ public sealed class UpgradeWindowTests
             DROP TABLE search_document;
             DROP TABLE save_provenance;
             DROP TABLE merge_dismissal;
+            DROP TABLE ai_interaction;
+            DROP TABLE ai_job;
+            DROP INDEX ix_session_substantive;
+            DROP INDEX ix_artifact_window;
+            DROP INDEX ix_artifact_session;
+            ALTER TABLE fact DROP COLUMN source;
+            ALTER TABLE derived_artifact DROP COLUMN source_person_id;
+            ALTER TABLE derived_artifact DROP COLUMN source_edge_id;
+            ALTER TABLE derived_artifact DROP COLUMN window_start_unix;
+            ALTER TABLE derived_artifact DROP COLUMN window_end_unix;
+            ALTER TABLE person DROP COLUMN ai_excluded;
+            ALTER TABLE thread DROP COLUMN ai_excluded;
+            ALTER TABLE save_meta DROP COLUMN ai_opt_out;
+            ALTER TABLE session DROP COLUMN is_substantive;
+            ALTER TABLE session DROP COLUMN filter_version;
             DELETE FROM schema_migration
-            WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql');
+            WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
+                           '006_ai_interaction.sql', '007_ai_jobs.sql',
+                           '008_facts.sql');
             """;
         command.ExecuteNonQuery();
     }

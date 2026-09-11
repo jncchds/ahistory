@@ -31,6 +31,8 @@ public sealed partial class ThreadsViewModel(ArchiveQueries queries, ILogger<Thr
 
     public override string Glyph => "❐";
 
+    public override int Position => 60;
+
     public ObservableCollection<ThreadRow> Threads { get; } = [];
 
     /// <summary>

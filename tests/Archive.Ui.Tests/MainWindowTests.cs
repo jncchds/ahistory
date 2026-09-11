@@ -17,14 +17,23 @@ namespace Archive.Ui.Tests;
 /// </remarks>
 public sealed class MainWindowTests
 {
+    /// <summary>
+    /// The pages the desktop head registers, minus the ones an optional feature contributes.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately in the order the head registers them rather than in rail order: the window
+    /// sorts by Position, and passing them pre-sorted would test nothing.
+    /// </remarks>
     private static MainWindowViewModel BuildViewModel(TempSave save) => new(
         save.Options,
-        new OverviewViewModel(save.Queries),
-        new ImportViewModel(save.Runner, new NullFolderPicker()),
-        new PersonViewModel(save.Queries, save.Conversation),
-        new SearchViewModel(save.Queries, save.Search, save.Conversation),
-        new PeopleViewModel(save.Queries, save.Merger, save.Suggestions),
-        new ThreadsViewModel(save.Queries));
+        [
+            new ThreadsViewModel(save.Queries),
+            new OverviewViewModel(save.Queries),
+            new ImportViewModel(save.Runner, new NullFolderPicker()),
+            new PersonViewModel(save.Queries, save.Conversation),
+            new SearchViewModel(save.Queries, save.Search, save.Conversation),
+            new PeopleViewModel(save.Queries, save.Merger, save.Suggestions),
+        ]);
 
     [Fact]
     public Task The_window_opens_with_every_page_in_the_sidebar() => Headless.RunAsync(() =>

@@ -78,7 +78,7 @@
 
   </UserControl.DataTemplates>
 
-  <Grid ColumnDefinitions="300,*">
+  <Grid ColumnDefinitions="300,*,Auto">
 
     <!-- The people list, as Telegram's second column. -->
     <Border Grid.Column="0" Background="{DynamicResource ListBrush}">
@@ -154,6 +154,72 @@
       </ItemsControl>
 
     </DockPanel>
+
+    <!--
+      What is known about this person. Absent, not empty and not disabled, while AI is off —
+      P1: a feature that is switched off leaves no trace in the window.
+    -->
+    <Border Grid.Column="2" Width="320" Background="{DynamicResource ListBrush}"
+            BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1,0,0,0"
+            IsVisible="{Binding Facts.IsAvailable, FallbackValue=False}">
+      <DockPanel Margin="14,12">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,10">
+          <TextBlock Text="What is known" FontWeight="SemiBold" />
+          <TextBlock Classes="faint" TextWrapping="Wrap" Text="{Binding Facts.CoverageLine}" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+                   IsVisible="{Binding Facts.Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding Facts.Error}" />
+
+        <!-- "Not read yet" and "nothing worth recording" look identical without this line. -->
+        <TextBlock DockPanel.Dock="Top" Classes="subtle" TextWrapping="Wrap"
+                   IsVisible="{Binding Facts.IsEmpty, FallbackValue=False}"
+                   Text="{Binding Facts.EmptyText}" />
+
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Facts.Facts}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:FactItem">
+                <Border Margin="0,0,0,8" Padding="10,8" CornerRadius="6"
+                        Background="{DynamicResource ElevatedBrush}">
+                  <StackPanel Spacing="4">
+
+                    <StackPanel Spacing="4" IsVisible="{Binding !IsEditing}">
+                      <TextBlock TextWrapping="Wrap" Text="{Binding Claim}" />
+                      <TextBlock Classes="faint" TextWrapping="Wrap" Text="{Binding Detail}" />
+                      <!-- The source first: reading the message is how a fact gets checked. -->
+                      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                        <Button Content="source" FontSize="11" Padding="8,2"
+                                IsEnabled="{Binding CanOpen}" Command="{Binding OpenCommand}" />
+                        <Button Content="edit" FontSize="11" Padding="8,2"
+                                Command="{Binding BeginEditCommand}" />
+                        <Button Content="remove" FontSize="11" Padding="8,2"
+                                Command="{Binding DeleteCommand}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding IsEditing}">
+                      <TextBox Text="{Binding EditClaim}" TextWrapping="Wrap" PlaceholderText="The fact, in a sentence" />
+                      <TextBox Text="{Binding EditObject}" PlaceholderText="The value" />
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Classes="accent" Content="save" FontSize="11" Padding="8,2"
+                                Command="{Binding SaveEditCommand}" />
+                        <Button Content="cancel" FontSize="11" Padding="8,2"
+                                Command="{Binding CancelEditCommand}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+      </DockPanel>
+    </Border>
 
   </Grid>
 

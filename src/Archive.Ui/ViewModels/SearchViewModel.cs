@@ -53,6 +53,8 @@ public sealed partial class SearchViewModel(
 
     public override string Glyph => "⌕";
 
+    public override int Position => 40;
+
     public ObservableCollection<SearchHit> Results { get; } = [];
 
     public ObservableCollection<PersonFilterOption> People { get; } = [];

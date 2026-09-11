@@ -29,10 +29,19 @@ that time is the normal case, not a degraded one.
 
 Concretely, and non-negotiably:
 
-- **No AI dependency in the app's spine.** `Archive.Core`, `Archive.Data`, `Archive.Import`,
-  `Archive.Ui` and `Archive.Desktop` must not reference any inference, embedding or model-runtime
-  package. AI belongs in its own projects, which the rest of the app must build and run without.
-  Enforced by `SolutionLayoutTests.No_core_project_takes_an_ai_dependency`.
+- **Switched off, AI leaves no trace in the window.** No model, no process, no network call, and
+  nothing of it in the rail — not a disabled entry, not an empty page explaining what is missing.
+  The settings page is the single exception, because it is where the switch is. Enforced by
+  `AiPageTests`.
+- **Turning it off is complete.** Every derived row can be deleted in one action, and what is left
+  is exactly the archive that was there before.
+- **No model runtime in the storage layer.** `Archive.Core`, `Archive.Data`, `Archive.Import`,
+  `Archive.Media` and `Archive.Logging` must not reference an inference or embedding package, and
+  must not reference `Archive.Ai`. The UI and the heads may — AI there is a page and a switch
+  (decisions.md D31). What this protects is that `sqlite-vec` and `Whisper.net` are native,
+  per-RID binaries which would otherwise ship and load for every user who never enables anything.
+  Enforced by `SolutionLayoutTests.No_storage_project_takes_an_ai_dependency` and
+  `No_storage_project_references_the_ai_project`.
 - **No view may require a derived artifact to render.** A message with no transcript, no
   embedding and no extracted facts is the normal state and must look normal — not like a loading
   skeleton that never resolves.

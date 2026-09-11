@@ -20,6 +20,27 @@ public abstract partial class ViewModelBase(ILogger? logger = null) : Observable
     public abstract string Title { get; }
 
     /// <summary>
+    /// Where the page sits in the rail, lowest first.
+    /// </summary>
+    /// <remarks>
+    /// The window is handed its pages by the container rather than naming them in a list, so that
+    /// an optional feature can contribute one without the window learning it exists. The order has
+    /// to come from somewhere, and a registration order is not somewhere — it is whatever the head
+    /// happened to type.
+    /// </remarks>
+    public abstract int Position { get; }
+
+    /// <summary>
+    /// Whether the page is offered at all.
+    /// </summary>
+    /// <remarks>
+    /// AGENTS.md P1: a feature that is switched off leaves no trace in the window — not a disabled
+    /// entry, not an empty page explaining what is missing. Raise a change notification when this
+    /// flips and the rail follows immediately, with no restart.
+    /// </remarks>
+    public virtual bool IsAvailable => true;
+
+    /// <summary>
     /// The rail icon.
     /// </summary>
     /// <remarks>

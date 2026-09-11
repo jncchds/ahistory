@@ -11,6 +11,8 @@ public sealed partial class OverviewViewModel(ArchiveQueries queries, ILogger<Ov
 
     public override string Glyph => "◱";
 
+    public override int Position => 10;
+
     [ObservableProperty]
     private SaveSummary? _summary;
 

@@ -59,24 +59,40 @@ public sealed class SolutionLayoutTests
     }
 
     /// <summary>
-    /// AGENTS.md P1: the archive is a chat history app first, and must build and run with no AI
-    /// component present at all.
+    /// Every project that ships to a user who never enables AI, and therefore must not carry a
+    /// model runtime.
     /// </summary>
     /// <remarks>
-    /// This is enforced by a test rather than by intention because the erosion is always
-    /// reasonable-looking: one embedding call added to a query path, one model client injected
-    /// into a view model, and suddenly opening your own history depends on a runtime being
-    /// installed and a background job having finished. AI belongs in its own projects, which
-    /// the spine must never reference.
+    /// Not the UI and not the heads: those may reference <c>Archive.Ai</c> freely, because AI
+    /// there is a page and a switch (decisions.md D31). What this list protects is the storage
+    /// layer, where a package reference is not a feature but a native, per-RID binary that ships
+    /// and loads for everyone.
+    /// </remarks>
+    private static readonly string[] Storage =
+    [
+        "Archive.Core", "Archive.Data", "Archive.Import", "Archive.Media", "Archive.Logging",
+    ];
+
+    /// <summary>
+    /// AGENTS.md P1: the archive is a chat history app first, and must run with no AI component.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rule this enforces is narrower than it once was. It is not that the UI must be unable
+    /// to see the AI project — that turned out to buy nothing, and made a settings page awkward
+    /// to reach. It is that <c>sqlite-vec</c> and <c>Whisper.net</c> are native binaries in a
+    /// build already over 100 MB per platform, and a package referenced from the storage layer
+    /// ships and loads whether or not anyone switched anything on.
+    /// </para>
+    /// <para>
+    /// The behavioural half of P1 — no model, no process, no network, no AI in the window when it
+    /// is off — is checked where it lives, in the view-model tests.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void No_core_project_takes_an_ai_dependency()
+    public void No_storage_project_takes_an_ai_dependency()
     {
-        string[] spine =
-        [
-            "Archive.Core", "Archive.Data", "Archive.Import", "Archive.Media",
-            "Archive.Logging", "Archive.Ui", "Archive.Desktop", "Archive.Cli",
-        ];
+        var spine = Storage;
 
         // Substrings, matched case-insensitively against package ids.
         string[] forbidden =
@@ -99,9 +115,27 @@ public sealed class SolutionLayoutTests
 
                 Assert.True(
                     hit is null,
-                    $"{ProjectName(project)} references '{package}'. AGENTS.md P1: the archive must "
-                    + "build and run with no AI component. Put this in a separate project.");
+                    $"{ProjectName(project)} references '{package}'. AGENTS.md P1: a user who never "
+                    + "enables AI must not be shipped a model runtime. Put this in Archive.Ai.");
             }
+        }
+    }
+
+    /// <summary>
+    /// The storage layer does not reference the AI project either.
+    /// </summary>
+    /// <remarks>
+    /// The package rule above would not catch it: <c>Archive.Ai</c> carries no forbidden package
+    /// today, because talking to an OpenAI-shaped endpoint needs nothing but HttpClient. It will
+    /// at A6, and by then a reference from <c>Archive.Data</c> would be load-bearing and awkward
+    /// to remove — which is why the direction is fixed now, while it costs nothing.
+    /// </remarks>
+    [Fact]
+    public void No_storage_project_references_the_ai_project()
+    {
+        foreach (var project in SourceProjects().Where(p => Storage.Contains(ProjectName(p))))
+        {
+            Assert.DoesNotContain("Archive.Ai", ProjectReferencesOf(project));
         }
     }
 

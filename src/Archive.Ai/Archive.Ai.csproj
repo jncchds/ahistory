@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
+    <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Prompts ship inside the assembly, like migrations, so a published single-file build cannot
+      be separated from the text that produced its facts.
+    -->
+    <EmbeddedResource Include="Extraction/Prompts/*.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tests pin the prompt inventory, which is not part of the public surface. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Archive.Ai.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    No model-runtime package, and there will not be one until A6. Every provider here is an
+    OpenAI-shaped HTTP endpoint spoken to with HttpClient and System.Text.Json, which is why the
+    LLM half of this app adds nothing to the download size and nothing to a build that never
+    enables it.
+  -->
+
+</Project>

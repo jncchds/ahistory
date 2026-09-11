@@ -47,6 +47,7 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.OwnerIsSelf).HasColumnName("owner_is_self");
             e.Property(x => x.Provenance).HasColumnName("provenance");
             e.Property(x => x.CreatedUtc).HasColumnName("created_utc");
+            e.Property(x => x.AiOptOut).HasColumnName("ai_opt_out");
         });
 
         b.Entity<ImportSource>(e =>
@@ -86,6 +87,7 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.IsOwner).HasColumnName("is_owner");
             e.Property(x => x.Notes).HasColumnName("notes");
             e.Property(x => x.CreatedUtc).HasColumnName("created_utc");
+            e.Property(x => x.AiExcluded).HasColumnName("ai_excluded");
         });
 
         b.Entity<Identity>(e =>
@@ -123,6 +125,7 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.Title).HasColumnName("title");
             e.Property(x => x.FirstImportId).HasColumnName("first_import_id");
             e.Property(x => x.CreatedUtc).HasColumnName("created_utc");
+            e.Property(x => x.AiExcluded).HasColumnName("ai_excluded");
         });
 
         b.Entity<ThreadParticipant>(e =>
@@ -161,6 +164,8 @@ public sealed class ArchiveDbContext(DbContextOptions<ArchiveDbContext> options)
             e.Property(x => x.MessageCount).HasColumnName("message_count");
             e.Property(x => x.MemberHash).HasColumnName("member_hash");
             e.Property(x => x.SegmenterVersion).HasColumnName("segmenter_version");
+            e.Property(x => x.IsSubstantive).HasColumnName("is_substantive");
+            e.Property(x => x.FilterVersion).HasColumnName("filter_version");
         });
 
         b.Entity<Message>(e =>
