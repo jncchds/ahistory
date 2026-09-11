@@ -270,6 +270,35 @@ internal static class Exports
                 new SmsMmsPart("image/jpeg", "IMG_0001.jpg", withPicture ? SyntheticMedia.Bytes(seed: 21) : null),
                 mId: "mms-0001", contactName: "Sam Ruiz, Alex Novak");
 
+    /// <summary>The first message of each WhatsApp chat, as the phone's clock showed it.</summary>
+    internal static readonly DateTime WhatsAppStart = new(2021, 3, 14, 22, 41, 3, DateTimeKind.Unspecified);
+
+    internal const string IosPhoto = "00000012-PHOTO-2021-03-14-22-44-03.jpg";
+
+    /// <summary>
+    /// An iPhone export, day-first and 24-hour: a notice, a multi-line message, a photo on disk, and
+    /// a message twenty days later.
+    /// </summary>
+    internal static WhatsAppChatBuilder WhatsAppIos() =>
+        WhatsAppChatBuilder.New("Sam Ruiz", WhatsAppStyle.Ios)
+            .Notice(WhatsAppStart, "Messages and calls are end-to-end encrypted.")
+            .Message(WhatsAppStart.AddMinutes(1), "Sam Ruiz", "the harbour was freezing")
+            .Message(WhatsAppStart.AddMinutes(2), "Owner Synthetic", "first line\nsecond line")
+            .Attachment(WhatsAppStart.AddMinutes(3), "Sam Ruiz", IosPhoto, seed: 31)
+            .Message(WhatsAppStart.AddDays(20), "Sam Ruiz", "мы были в Праге весной 🌷");
+
+    /// <summary>
+    /// An Android export, month-first with a two-digit year and a 12-hour clock: a sender known only
+    /// by number, a photo with a caption, and one left out.
+    /// </summary>
+    internal static WhatsAppChatBuilder WhatsAppAndroid() =>
+        WhatsAppChatBuilder.New("+1 555 123 4567", WhatsAppStyle.Android, "M/d/yy", twelveHour: true)
+            .Notice(WhatsAppStart, "Messages and calls are end-to-end encrypted. No one outside of this chat can read them.")
+            .Message(WhatsAppStart.AddMinutes(1), "+1 555 123 4567", "who's this")
+            .Message(WhatsAppStart.AddMinutes(2), "Owner Synthetic", "it's me")
+            .Attachment(WhatsAppStart.AddMinutes(3), "Owner Synthetic", "IMG-20210314-WA0001.jpg", seed: 32, caption: "the view")
+            .Omitted(WhatsAppStart.AddMinutes(4), "+1 555 123 4567");
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

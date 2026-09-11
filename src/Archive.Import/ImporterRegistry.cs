@@ -5,6 +5,7 @@ using Archive.Import.Qip;
 using Archive.Import.Sms;
 using Archive.Import.Telegram;
 using Archive.Import.Vk;
+using Archive.Import.WhatsApp;
 
 namespace Archive.Import;
 
@@ -43,6 +44,7 @@ public sealed class ImporterRegistry
             new MessengerImporter(),
             new InstagramImporter(),
             new SmsBackupImporter(),
+            new WhatsAppImporter(),
             new VkImporter(),
             new QipImporter(),
         ];

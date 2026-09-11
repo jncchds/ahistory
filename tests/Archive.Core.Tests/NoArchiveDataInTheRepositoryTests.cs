@@ -33,6 +33,8 @@ public sealed class NoArchiveDataInTheRepositoryTests
         "message_1.json",
         "profile_information.json",
         "personal_information.json",
+        // WhatsApp's iPhone export; the Android one is caught by name below.
+        "_chat.txt",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",
@@ -86,15 +88,20 @@ public sealed class NoArchiveDataInTheRepositoryTests
         Assert.Empty(offenders);
     }
 
-    /// <summary>SMS Backup &amp; Restore names its files <c>sms-&lt;timestamp&gt;.xml</c>.</summary>
+    /// <summary>
+    /// SMS Backup &amp; Restore names its files <c>sms-&lt;timestamp&gt;.xml</c>, and WhatsApp on
+    /// Android <c>WhatsApp Chat with &lt;name&gt;.txt</c>.
+    /// </summary>
     [Fact]
-    public void No_file_in_the_repository_looks_like_an_sms_backup()
+    public void No_file_in_the_repository_looks_like_an_sms_backup_or_a_whatsapp_chat()
     {
         var offenders = Walk(RepoRoot.Find())
             .Where(file =>
-                (file.Name.StartsWith("sms-", StringComparison.OrdinalIgnoreCase)
-                 || file.Name.StartsWith("calls-", StringComparison.OrdinalIgnoreCase))
-                && file.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                ((file.Name.StartsWith("sms-", StringComparison.OrdinalIgnoreCase)
+                  || file.Name.StartsWith("calls-", StringComparison.OrdinalIgnoreCase))
+                 && file.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                || (file.Name.StartsWith("WhatsApp Chat", StringComparison.OrdinalIgnoreCase)
+                    && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)))
             .Select(file => file.FullName)
             .ToArray();
 
