@@ -364,6 +364,31 @@ internal static class Exports
             .Message("300000000000000006", At(1615757560), DiscordSam, string.Empty, m => m.Attachment("harbour view.jpg", seed: 41))
             .Message("300000000000000007", At(1615757600), DiscordSam, string.Empty, type: "Call");
 
+    internal static SlackUser SlackOwner { get; } = new("U0OWNER", "owner", "Owner Synthetic");
+
+    internal static SlackUser SlackSam { get; } = new("U0SAM", "sam", "Sam Ruiz");
+
+    internal static SlackUser SlackAlex { get; } = new("U0ALEX", "alex", "Alex Novak");
+
+    /// <summary>
+    /// A Slack export: #general across two days with markup, a thread reply, a join, a bot and a
+    /// reaction; a DM with a shared file and an edit; and a group DM.
+    /// </summary>
+    internal static SlackExportBuilder Slack() =>
+        SlackExportBuilder.New([SlackOwner, SlackSam, SlackAlex])
+            .Channel("C0GENERAL", "general", [SlackOwner.Id, SlackSam.Id, SlackAlex.Id], c => c
+                .Message("1615757463.000100", SlackSam.Id, "the harbour was freezing &amp; <https://example.org|the map>")
+                .Message("1615757523.000200", SlackOwner.Id, "<@U0SAM> we should go back", m => m.Reply("1615757463.000100"))
+                .Subtype("1615757583.000300", SlackAlex.Id, "channel_join", "<@U0ALEX> has joined the channel")
+                .Bot("1615757700.000500", "B0DEPLOY", "Deploy Bot", "deployed to <#C0GENERAL>")
+                .Message("1615843863.000400", SlackAlex.Id, "мы были в Праге весной", m => m
+                    .Reaction("thumbsup", 3, SlackOwner.Id, SlackSam.Id)))
+            .Dm("D0SAM", [SlackOwner.Id, SlackSam.Id], c => c
+                .Message("1615757600.000100", SlackSam.Id, "look", m => m.File("harbour.jpg", "image/jpeg"))
+                .Message("1615757660.000200", SlackOwner.Id, "ok", m => m.Edited("1615757700.000000")))
+            .Mpim("G0TRIP", "mpdm-owner--sam--alex-1", [SlackOwner.Id, SlackSam.Id, SlackAlex.Id], c => c
+                .Message("1615930263.000100", SlackSam.Id, "tickets?"));
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

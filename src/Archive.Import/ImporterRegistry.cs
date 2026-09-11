@@ -4,6 +4,7 @@ using Archive.Import.Hangouts;
 using Archive.Import.Meta;
 using Archive.Import.Qip;
 using Archive.Import.Skype;
+using Archive.Import.Slack;
 using Archive.Import.Sms;
 using Archive.Import.Telegram;
 using Archive.Import.Vk;
@@ -49,6 +50,7 @@ public sealed class ImporterRegistry
             new WhatsAppImporter(),
             new SkypeImporter(),
             new DiscordImporter(),
+            new SlackImporter(),
             new VkImporter(),
             new QipImporter(),
         ];

@@ -93,6 +93,7 @@ something another person said.
 | **SMS and MMS** (Android) | the folder holding the `sms-….xml` from SMS Backup & Restore | Built to the app's documented format; people are keyed by phone number |
 | **WhatsApp** | the folder holding the exported chat `.txt` files, unzipped, with their media | Built to the export as documented; **not yet run against a real export**, and the format varies by phone and locale |
 | **Discord** | the unpacked data package, or a folder of DiscordChatExporter `.json` files | Built to both documented shapes. **The package holds only your own messages**; DiscordChatExporter holds everyone's |
+| **Slack** | the unpacked workspace export, containing `users.json` and `channels.json` | Built to the documented export; workspace history, and it does not say which account is yours |
 | Signal, iMessage | — | Under consideration: encrypted or device-local databases, which need a decrypt step outside the app |
 
 Point the app at the folder and it works out which format it is, says so, and refuses rather than

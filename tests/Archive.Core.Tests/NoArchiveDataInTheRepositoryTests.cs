@@ -40,6 +40,10 @@ public sealed class NoArchiveDataInTheRepositoryTests
         // Discord's data package: a channel's header and its messages.
         "channel.json",
         "messages.csv",
+        // A Slack workspace export's conversation lists.
+        "channels.json",
+        "dms.json",
+        "mpims.json",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",
