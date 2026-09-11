@@ -13,6 +13,7 @@ using Archive.Import;
 using Archive.Import.Synthetic;
 using Archive.Media;
 using Archive.Sync;
+using Archive.Sync.Telegram;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -40,6 +41,10 @@ internal static class Commands
                 "import" => Import(args),
                 "sources" => Sources(args),
                 "watch" => Watch(args),
+                "connect" => Connect(args),
+                "chats" => Chats(args),
+                "sync" => Sync(args),
+                "sync-check" => SyncCheck(args),
                 "synth" => Synth(args),
                 "stats" => Stats(args),
                 "ai" => Ai(args),
@@ -586,6 +591,574 @@ internal static class Commands
     }
 
     /// <summary>
+    /// Signs in to Telegram, so the archive can read the account rather than an export of it.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is contacted until this is run: the connection is off until switched on, and this is
+    /// the switch. Signing in needs an api_id and api_hash of the user's own, from my.telegram.org —
+    /// they identify the application rather than the person, and using the user's own means their
+    /// account never runs under somebody else's.
+    /// </remarks>
+    private static int Connect(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine(
+                "usage: ahistory connect <save.db> [--api-id <n>] [--api-hash <h>] [--phone <+number>] [--off]");
+            return 2;
+        }
+
+        var (database, options) = Open(args[1]);
+        var store = new SyncSettingsStore(logger: _loggerFactory.CreateLogger<SyncSettingsStore>());
+
+        if (args.Contains("--off"))
+        {
+            store.Update(s => s.Telegram.Enabled = false);
+            Console.WriteLine("telegram off — nothing will be contacted. The session is kept; `--off` is not a sign-out.");
+            return 0;
+        }
+
+        var apiId = Number(args, "--api-id");
+        var apiHash = Option(args, "--api-hash");
+
+        var settings = store.Update(s =>
+        {
+            s.Telegram.ApiId = apiId ?? s.Telegram.ApiId;
+            s.Telegram.ApiHash = apiHash ?? s.Telegram.ApiHash;
+        });
+
+        if (!settings.Telegram.HasApplication)
+        {
+            Console.Error.WriteLine("error: Telegram needs an application of your own.");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("  Sign in at https://my.telegram.org, open 'API development tools',");
+            Console.Error.WriteLine("  create an application, then pass what it gives you:");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"    ahistory connect \"{args[1]}\" --api-id 12345 --api-hash abc123…");
+            return 2;
+        }
+
+        // Switching it on is what the user just asked for by running this.
+        settings = store.Update(s => s.Telegram.Enabled = true);
+
+        using var source = new TelegramSource(
+            settings.Telegram, TelegramSession(store), _loggerFactory.CreateLogger<TelegramSource>());
+
+        var needed = source.ConnectAsync(Option(args, "--phone")).GetAwaiter().GetResult();
+
+        while (needed is not null)
+        {
+            var answer = Ask(needed);
+
+            if (string.IsNullOrWhiteSpace(answer))
+            {
+                Console.Error.WriteLine("error: nothing entered; not signed in.");
+                return 1;
+            }
+
+            needed = source.ContinueLoginAsync(answer).GetAwaiter().GetResult();
+        }
+
+        var me = source.Me!;
+
+        Console.WriteLine($"signed in as {me.first_name} {me.last_name} ({me.id})".Replace("  ", " ", StringComparison.Ordinal));
+        Console.WriteLine($"session  {TelegramSession(store).Path}");
+        Console.WriteLine(SecretFile.IsEncryptedAtRest
+            ? "         encrypted for this Windows account"
+            : "         readable only by you; this platform has no key store the app uses");
+
+        // Listing the chats is what makes the next step possible: nothing is read until the user
+        // says which conversations belong in the archive.
+        var result = new SyncEngine(database, new FileSystemMediaStore(options), _loggerFactory.CreateLogger<SyncEngine>())
+            .SyncAsync(source).GetAwaiter().GetResult();
+
+        Console.WriteLine();
+        Console.WriteLine($"{result.ChatsNotIncluded} chat(s) found and none read yet — decide which ones to keep:");
+        Console.WriteLine($"    ahistory chats \"{args[1]}\"");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Lists a connected account's chats, and includes or ignores them.
+    /// </summary>
+    /// <remarks>
+    /// An account is every channel someone follows as well as everyone they have ever written to.
+    /// Reading all of it would bury the correspondence, so a chat contributes nothing until it is
+    /// included — and an undecided chat is not an ignored one: it is waiting to be decided.
+    /// </remarks>
+    private static int Chats(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine(
+                "usage: ahistory chats <save.db> [--include <id>…] [--ignore <id>…] "
+                + "[--include-kind dm|group|channel|saved] [--ignore-kind …] [--undecided]");
+            return 2;
+        }
+
+        var (database, _) = Open(args[1]);
+        var store = new SyncStore(database);
+        var sourceId = TelegramSourceId(database);
+
+        if (sourceId is null)
+        {
+            Console.Error.WriteLine("error: no connected account in this save. Run `ahistory connect` first.");
+            return 1;
+        }
+
+        foreach (var id in Values(args, "--include"))
+        {
+            store.Decide(sourceId, id, "include");
+        }
+
+        foreach (var id in Values(args, "--ignore"))
+        {
+            store.Decide(sourceId, id, "ignore");
+        }
+
+        if (Option(args, "--include-kind") is { } includeKind)
+        {
+            Console.WriteLine($"included {store.DecideKind(sourceId, includeKind, "include")} undecided {includeKind} chat(s)");
+        }
+
+        if (Option(args, "--ignore-kind") is { } ignoreKind)
+        {
+            Console.WriteLine($"ignored {store.DecideKind(sourceId, ignoreKind, "ignore")} undecided {ignoreKind} chat(s)");
+        }
+
+        var chats = store.Chats(sourceId, "telegram");
+        var undecidedOnly = args.Contains("--undecided");
+
+        foreach (var chat in chats.Where(c => !undecidedOnly || c.IsUndecided))
+        {
+            var mark = chat.Decision switch
+            {
+                "include" => "[keep]  ",
+                "ignore" => "[skip]  ",
+                _ => "[ ?  ]  ",
+            };
+
+            var when = chat.LastMessageUnix is { } unix
+                ? DateTimeOffset.FromUnixTimeSeconds(unix).LocalDateTime.ToString("d MMM yyyy")
+                : "—";
+
+            Console.WriteLine(
+                $"{mark}{chat.ChatId,-14} {Truncate(chat.Title ?? "(no title)", 34),-34} "
+                + $"{chat.ThreadKind,-7} {when,-12} {chat.MessageCount,8:N0} in archive");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(
+            $"{chats.Count(c => c.IsIncluded)} kept, {chats.Count(c => c.Decision == "ignore")} skipped, "
+            + $"{chats.Count(c => c.IsUndecided)} undecided.");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Reads the chats that were kept, and optionally stays connected for what arrives next.
+    /// </summary>
+    private static int Sync(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("usage: ahistory sync <save.db> [--live] [--no-raw-json]");
+            return 2;
+        }
+
+        var (database, options) = Open(args[1]);
+        var store = new SyncSettingsStore(logger: _loggerFactory.CreateLogger<SyncSettingsStore>());
+        var settings = store.Load();
+
+        if (!settings.Telegram.Enabled)
+        {
+            Console.Error.WriteLine("error: Telegram is switched off. `ahistory connect <save.db>` switches it on.");
+            return 1;
+        }
+
+        using var source = new TelegramSource(
+            settings.Telegram, TelegramSession(store), _loggerFactory.CreateLogger<TelegramSource>());
+
+        var needed = source.ConnectAsync().GetAwaiter().GetResult();
+
+        if (needed is not null)
+        {
+            Console.Error.WriteLine($"error: signing in is not finished ({needed}). Run `ahistory connect <save.db>`.");
+            return 1;
+        }
+
+        var engine = new SyncEngine(
+            database, new FileSystemMediaStore(options), _loggerFactory.CreateLogger<SyncEngine>());
+
+        var syncOptions = new SyncOptions(StoreRawJson: !args.Contains("--no-raw-json"));
+        var progress = new Progress<SyncProgress>(p =>
+            Console.Write($"\r{p.ChatsDone,4}/{p.ChatsTotal} chats  {p.MessagesInserted,9:N0} new  {Truncate(p.Chat, 30),-30}"));
+
+        var result = engine.SyncAsync(source, syncOptions, progress).GetAwaiter().GetResult();
+
+        Console.Write('\r');
+        Console.WriteLine($"read {result.ChatsRead} chat(s); {result.ChatsNotIncluded} not included");
+        Console.WriteLine($"  {result.Stats}");
+
+        if (!args.Contains("--live"))
+        {
+            return 0;
+        }
+
+        using var stopping = new CancellationTokenSource();
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            stopping.Cancel();
+        };
+
+        Console.WriteLine();
+        Console.WriteLine("following for new messages. Ctrl+C to stop.");
+
+        engine.FollowAsync(source, syncOptions, stopping.Token).GetAwaiter().GetResult();
+
+        Console.WriteLine("stopped.");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Reads the same messages twice — from an export and from the account — and reports every
+    /// place the two disagree.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the test no fixture can be: the translator and the reader were written by the same
+    /// hand from the same reading of the format, so they agree with each other whether or not they
+    /// are right (D22, and the QIP reader that passed six tests and could not open a real file).
+    /// Telegram's export and Telegram's API were written by different people; when both say the
+    /// same thing about the same message, that is evidence.
+    /// </para>
+    /// <para>
+    /// Attachment paths are deliberately not compared. The export names a file on disk and the
+    /// account names an object id, and they are never going to match — which is exactly why a
+    /// difference in them is not treated as an edit.
+    /// </para>
+    /// </remarks>
+    private static int SyncCheck(string[] args)
+    {
+        if (args.Length < 3)
+        {
+            Console.Error.WriteLine("usage: ahistory sync-check <save.db> <telegram-export-folder> [--show N]");
+            return 2;
+        }
+
+        var store = new SyncSettingsStore(logger: _loggerFactory.CreateLogger<SyncSettingsStore>());
+        var settings = store.Load();
+
+        if (!settings.Telegram.Enabled)
+        {
+            Console.Error.WriteLine("error: Telegram is switched off. `ahistory connect <save.db>` switches it on.");
+            return 1;
+        }
+
+        var exported = ReadExport(args[2]);
+
+        Console.WriteLine($"export   {exported.Count:N0} message(s) in {exported.Values.Select(c => c.ChatId).Distinct().Count()} chat(s)");
+
+        using var source = new TelegramSource(
+            settings.Telegram, TelegramSession(store), _loggerFactory.CreateLogger<TelegramSource>());
+
+        if (source.ConnectAsync().GetAwaiter().GetResult() is { } needed)
+        {
+            Console.Error.WriteLine($"error: signing in is not finished ({needed}). Run `ahistory connect <save.db>`.");
+            return 1;
+        }
+
+        var chats = source.ChatsAsync().GetAwaiter().GetResult().ToDictionary(c => c.ChatId, StringComparer.Ordinal);
+        var fromAccount = new Dictionary<string, Claim>(StringComparer.Ordinal);
+
+        foreach (var chatId in exported.Values.Select(c => c.ChatId).Distinct())
+        {
+            if (!chats.TryGetValue(chatId, out var chat))
+            {
+                Console.WriteLine($"chat     {chatId} is in the export but not offered by the account — skipped");
+                continue;
+            }
+
+            ReadAccountChat(source, chat, exported, fromAccount);
+        }
+
+        return Report(exported, fromAccount, Number(args, "--show") ?? 10);
+    }
+
+    /// <summary>Walks one chat back to where the export's oldest message for it sits.</summary>
+    private static void ReadAccountChat(
+        TelegramSource source, RemoteChat chat, Dictionary<string, Claim> exported, Dictionary<string, Claim> into)
+    {
+        var wanted = exported.Values.Where(c => c.ChatId == chat.ChatId).Select(c => c.Id).ToArray();
+        var oldest = wanted.Min();
+        string? cursor = null;
+
+        while (true)
+        {
+            // Nothing is downloaded: this compares what was said, and a photo's bytes are the same
+            // bytes whichever route fetched them.
+            var page = source.ReadAsync(chat, cursor, _ => false).GetAwaiter().GetResult();
+
+            foreach (var message in page.Messages)
+            {
+                into[message.Uid] = Claim.Of(chat.ChatId, message);
+            }
+
+            cursor = page.NextCursor;
+
+            if (page.IsComplete || cursor is null)
+            {
+                return;
+            }
+
+            // Far enough back: everything this page carried is older than anything the export has.
+            if (page.Messages.Count > 0 && page.Messages.Max(m => Claim.Of(chat.ChatId, m).Id) < oldest)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Reads a Telegram export into the same shape, without writing anything.</summary>
+    private static Dictionary<string, Claim> ReadExport(string folder)
+    {
+        var sink = new ClaimSink();
+
+        new Archive.Import.Telegram.TelegramImporter().Read(folder, sink);
+
+        return sink.Claims;
+    }
+
+    private static int Report(
+        Dictionary<string, Claim> exported, Dictionary<string, Claim> fromAccount, int show)
+    {
+        // Only where the two overlap: the export may predate messages the account still has, and
+        // the account may have lost what the export kept.
+        var shared = exported.Keys.Where(fromAccount.ContainsKey).ToArray();
+        var differing = shared.Where(uid => !exported[uid].SaysTheSame(fromAccount[uid])).ToArray();
+
+        // The stretch both sides describe, per chat. An export is a snapshot and both sides keep
+        // moving, so a message outside it is not a disagreement — and working that out per uid
+        // meant rescanning the whole export for each one.
+        var covered = exported.Values
+            .GroupBy(c => c.ChatId, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => (Oldest: g.Min(c => c.Id), Newest: g.Max(c => c.Id)),
+                StringComparer.Ordinal);
+
+        var onlyExported = exported.Keys.Where(uid => !fromAccount.ContainsKey(uid) && Compared(exported[uid])).ToArray();
+        var onlyAccount = fromAccount.Keys.Where(uid => !exported.ContainsKey(uid) && Compared(fromAccount[uid])).ToArray();
+
+        Console.WriteLine($"account  {fromAccount.Count:N0} message(s) read back");
+        Console.WriteLine($"shared   {shared.Length:N0} message(s) have the same uid on both sides");
+        Console.WriteLine($"agree    {shared.Length - differing.Length:N0}");
+        Console.WriteLine($"differ   {differing.Length:N0}");
+        Console.WriteLine($"export-only {onlyExported.Length:N0}   account-only {onlyAccount.Length:N0}");
+
+        // Ids, never the words: a check run against real correspondence must not print any of it.
+        Print("differ", differing);
+        Print("export only", onlyExported);
+        Print("account only", onlyAccount);
+
+        Console.WriteLine();
+
+        if (shared.Length == 0)
+        {
+            Console.WriteLine("no message matched by uid at all — the chat ids the two sides use do not line up.");
+            return 1;
+        }
+
+        var clean = differing.Length == 0 && onlyExported.Length == 0 && onlyAccount.Length == 0;
+
+        Console.WriteLine(clean
+            ? "the account and the export agree on every message they share."
+            : "they disagree — the uid, the text or the entities differ where they should not.");
+
+        return clean ? 0 : 1;
+
+        void Print(string label, string[] uids)
+        {
+            foreach (var uid in uids.Take(show))
+            {
+                Console.WriteLine($"  {label,-12} {uid}");
+            }
+
+            if (uids.Length > show)
+            {
+                Console.WriteLine($"  {label,-12} … and {uids.Length - show:N0} more");
+            }
+        }
+
+        bool Compared(Claim claim) =>
+            covered.TryGetValue(claim.ChatId, out var range) && claim.Id >= range.Oldest && claim.Id <= range.Newest;
+    }
+
+    /// <summary>What one message says, as both routes should describe it.</summary>
+    private sealed record Claim(string ChatId, long Id, string Plaintext, string? Entities, string? Action)
+    {
+        internal static Claim Of(string chatId, NormalizedMessage message) =>
+            new(chatId,
+                long.Parse(message.Uid[(message.Uid.LastIndexOf('/') + 1)..], System.Globalization.CultureInfo.InvariantCulture),
+                message.Plaintext,
+                Canonical(message.EntitiesJson),
+                message.ServiceAction);
+
+        /// <summary>JSON with its whitespace gone: an export keeps Telegram's indentation.</summary>
+        private static string? Canonical(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            try
+            {
+                return System.Text.Json.Nodes.JsonNode.Parse(json)?.ToJsonString();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return json;
+            }
+        }
+
+        internal bool SaysTheSame(Claim other) =>
+            string.Equals(Plaintext, other.Plaintext, StringComparison.Ordinal)
+            && string.Equals(Entities, other.Entities, StringComparison.Ordinal)
+            && string.Equals(Action, other.Action, StringComparison.Ordinal);
+    }
+
+    /// <summary>Collects what an export says, without a save to write it into.</summary>
+    private sealed class ClaimSink : IImportSink
+    {
+        internal Dictionary<string, Claim> Claims { get; } = new(StringComparer.Ordinal);
+
+        public void OnOwner(NormalizedIdentity owner)
+        {
+        }
+
+        public void OnThread(NormalizedThread thread)
+        {
+        }
+
+        public void OnMessage(NormalizedThread thread, NormalizedMessage message) =>
+            Claims[message.Uid] = Claim.Of(thread.SourceThreadId, message);
+    }
+
+    /// <summary>The session file — outside the save, so a save that is copied carries no account.</summary>
+    private static SecretFile TelegramSession(SyncSettingsStore store) =>
+        new(Path.Combine(store.Directory, "connectors", "telegram.session"));
+
+    /// <summary>The source a connected Telegram account writes into, if there is one.</summary>
+    private static string? TelegramSourceId(Database database)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT DISTINCT c.source_id
+            FROM sync_chat c
+            JOIN import_source s ON s.id = c.source_id
+            WHERE s.platform = 'telegram'
+            LIMIT 1;
+            """;
+
+        return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>Asks for whatever signing in needs next, hiding what should not be echoed.</summary>
+    private static string? Ask(string needed)
+    {
+        switch (needed)
+        {
+            case "verification_code":
+                Console.Write("code Telegram just sent you: ");
+                return Console.ReadLine();
+
+            case "password":
+                Console.Write("two-step verification password: ");
+                return ReadHidden();
+
+            case "phone_number":
+                Console.Write("phone number, with country code: ");
+                return Console.ReadLine();
+
+            default:
+                Console.Write($"{needed.Replace('_', ' ')}: ");
+                return Console.ReadLine();
+        }
+    }
+
+    /// <summary>
+    /// Reads a line without echoing it.
+    /// </summary>
+    /// <remarks>
+    /// A two-step password typed into a terminal that echoes it stays on screen, and in a
+    /// scrollback someone else may read. Falls back to a plain read where there is no console to
+    /// control — a redirected stdin has nothing to hide it from.
+    /// </remarks>
+    private static string? ReadHidden()
+    {
+        if (Console.IsInputRedirected)
+        {
+            return Console.ReadLine();
+        }
+
+        var typed = new System.Text.StringBuilder();
+
+        while (true)
+        {
+            var key = Console.ReadKey(intercept: true);
+
+            switch (key.Key)
+            {
+                case ConsoleKey.Enter:
+                    Console.WriteLine();
+                    return typed.ToString();
+
+                case ConsoleKey.Backspace when typed.Length > 0:
+                    typed.Length--;
+                    break;
+
+                default:
+                    if (!char.IsControl(key.KeyChar))
+                    {
+                        typed.Append(key.KeyChar);
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Every value given for a repeatable option.</summary>
+    private static IEnumerable<string> Values(string[] args, string name)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == name)
+            {
+                yield return args[i + 1];
+            }
+        }
+    }
+
+    /// <summary>Opens a save the way every command here does: validate, migrate, hand back both.</summary>
+    private static (Database Database, ArchiveOptions Options) Open(string path)
+    {
+        var options = new ArchiveOptions { DatabasePath = path };
+        options.Validate();
+
+        var database = new Database(options, _loggerFactory.CreateLogger<Database>());
+        database.Migrate();
+
+        return (database, options);
+    }
+
+    /// <summary>
     /// Reports what a save is made of, and what it costs.
     /// </summary>
     /// <remarks>
@@ -1055,6 +1628,21 @@ internal static class Commands
                                                 scheduled export changes it. `check` looks once,
                                                 `follow` keeps looking until Ctrl+C
               ahistory stats <save.db>          what the archive is made of
+              ahistory connect <save.db> [--api-id <n>] [--api-hash <h>] [--phone <+number>] [--off]
+                                                sign in to Telegram and list its chats. Needs an
+                                                api_id and api_hash of your own from
+                                                my.telegram.org. Nothing is contacted until you
+                                                run this; --off switches it back off
+              ahistory chats <save.db> [--include <id>…] [--ignore <id>…] [--include-kind <kind>]
+                                                which of a connected account's chats belong in the
+                                                archive. Nothing is read until it is included
+              ahistory sync <save.db> [--live] [--no-raw-json]
+                                                read the chats you kept, and with --live keep
+                                                reading while this runs
+              ahistory sync-check <save.db> <export-folder> [--show N]
+                                                read the same messages from an export and from the
+                                                account and report where they disagree. The one
+                                                check a fixture cannot be
               ahistory ai <save.db> [--segment] [--extract] [--all] [--consent] [--limit N]
                                                 what the AI layer has read of this archive.
                                                 --segment splits it into sessions (no model);

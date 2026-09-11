@@ -26,7 +26,7 @@ namespace Archive.Sync.Telegram;
 /// place the user asked for it.
 /// </para>
 /// </remarks>
-public sealed class TelegramSource : IChatSource
+public sealed class TelegramSource : IChatSource, IDisposable
 {
     private readonly TelegramSettings _settings;
     private readonly SecretFile _session;
@@ -612,13 +612,22 @@ public sealed class TelegramSource : IChatSource
             : user.MainUsername ?? user.id.ToString(CultureInfo.InvariantCulture);
     }
 
-    public ValueTask DisposeAsync()
+    /// <summary>
+    /// Closes the connection. Both forms, because a synchronous caller — the CLI — has no way to
+    /// await one, and closing a socket needs nothing asynchronous here.
+    /// </summary>
+    public void Dispose()
     {
         _client?.Dispose();
         _client = null;
 
         _sessionStream?.Dispose();
         _sessionStream = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
 
         return ValueTask.CompletedTask;
     }
