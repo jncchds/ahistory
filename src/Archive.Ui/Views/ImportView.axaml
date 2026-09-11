@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
              xmlns:import="clr-namespace:Archive.Import;assembly=Archive.Import"
+             xmlns:sync="clr-namespace:Archive.Sync;assembly=Archive.Sync"
              x:Class="Archive.Ui.Views.ImportView"
              x:DataType="vm:ImportViewModel">
 
@@ -108,6 +109,10 @@
 
       <StackPanel Orientation="Horizontal" Spacing="12">
         <Button Content="Import" Command="{Binding ImportCommand}" IsEnabled="{Binding CanImport}" />
+        <!-- The answers above — format, source, your account — are exactly what a scheduled
+             re-import would otherwise have to ask again. -->
+        <Button Content="Import and keep watching" Command="{Binding WatchCommand}"
+                IsVisible="{Binding CanWatchThisFolder}" />
         <ProgressBar IsIndeterminate="True" Width="140" VerticalAlignment="Center"
                      IsVisible="{Binding IsImporting}" />
       </StackPanel>
@@ -141,6 +146,51 @@
                      Text="{Binding Result.MediaMissing, StringFormat='{}{0:N0} attachments not included in the export'}" />
         </StackPanel>
       </Border>
+
+      <!--
+        Watched folders. An export goes stale the day it is made, and nobody re-exports by hand
+        every month; a folder a backup app or Takeout writes into can simply be read again
+        whenever it changes.
+      -->
+      <StackPanel Spacing="8" IsVisible="{Binding CanWatchFolders}">
+        <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,8" />
+
+        <TextBlock Text="Kept in sync" FontWeight="SemiBold" />
+        <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+                   Text="These folders are read again whenever what is in them changes — a nightly SMS backup, a scheduled Takeout. Only while the app is open; nothing runs in the background when it is closed." />
+
+        <ItemsControl ItemsSource="{Binding WatchedFolders}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="sync:WatchedFolder">
+              <Border Background="{DynamicResource ElevatedBrush}" CornerRadius="4" Padding="10,6" Margin="0,2">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Stop" FontSize="11" Padding="8,2"
+                          Command="{Binding $parent[ItemsControl].((vm:ImportViewModel)DataContext).UnwatchCommand}"
+                          CommandParameter="{Binding}" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="faint" Text="{Binding Platform, StringFormat='read as {0}'}"
+                               IsVisible="{Binding Platform, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Classes="faint" Text="Nothing is being watched yet."
+                   IsVisible="{Binding !HasWatchedFolders}" />
+
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button Content="Check now" Command="{Binding CheckWatchedCommand}"
+                  IsEnabled="{Binding !IsCheckingWatched}" IsVisible="{Binding HasWatchedFolders}" />
+          <ProgressBar IsIndeterminate="True" Width="120" VerticalAlignment="Center"
+                       IsVisible="{Binding IsCheckingWatched}" />
+          <TextBlock Classes="subtle" VerticalAlignment="Center" TextWrapping="Wrap"
+                     Text="{Binding WatchStatus}"
+                     IsVisible="{Binding WatchStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </StackPanel>
 
     </StackPanel>
   </ScrollViewer>

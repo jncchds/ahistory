@@ -6,6 +6,7 @@ using Archive.Data;
 using Archive.Import;
 using Archive.Logging;
 using Archive.Media;
+using Archive.Sync;
 using Archive.Ui;
 using Archive.Ui.Services;
 using Archive.Ui.ViewModels;
@@ -79,6 +80,7 @@ internal static class Program
 
             App.Services = BuildContainer(options, database, loggerFactory);
 
+            StartWatchingFolders(App.Services, log);
             StartAiIfEnabled(App.Services, log);
 
             var exitCode = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -140,6 +142,16 @@ internal static class Program
         services.AddSingleton<ImportRunner>();
         services.AddSingleton<IFolderPicker, StorageFolderPicker>();
 
+        // Keeping the archive current. The settings are per machine (a watched folder is a path on
+        // this one, which P7 keeps out of the save); which chats a connected account contributes
+        // is per save, and lives in the save.
+        services.AddSingleton<SyncSettingsStore>();
+        services.AddSingleton(provider => new FolderWatcher(
+            provider.GetRequiredService<ImportRunner>(),
+            provider.GetRequiredService<SyncSettingsStore>(),
+            database.DatabasePath,
+            provider.GetRequiredService<ILogger<FolderWatcher>>()));
+
         // The optional half. Removing this line and the project reference leaves an app that
         // still builds and still opens every archive, which is AGENTS.md P1 as something a person
         // can check rather than something a document asserts.
@@ -168,6 +180,46 @@ internal static class Program
         services.AddSingleton<MainWindowViewModel>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Starts re-reading watched folders, if any have been named.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Composition again, and the reason the head is allowed to know this exists. The first pass
+    /// runs as the window opens, which is what catches up on the exports that landed while the app
+    /// was closed — the watcher lives and dies with the app, exactly like the AI runner, and
+    /// nothing here reads the archive while it is shut.
+    /// </para>
+    /// <para>
+    /// Every other page counts something out of the archive, so a folder that brought messages in
+    /// has made all of them stale.
+    /// </para>
+    /// </remarks>
+    private static void StartWatchingFolders(IServiceProvider services, ILogger log)
+    {
+        var watcher = services.GetRequiredService<FolderWatcher>();
+        var window = services.GetRequiredService<MainWindowViewModel>();
+
+        watcher.Checked += check =>
+        {
+            if (check.Outcome != FolderCheckOutcome.Imported)
+            {
+                return;
+            }
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(async () => await window.ReloadAsync());
+        };
+
+        if (watcher.Folders.Count == 0)
+        {
+            return;
+        }
+
+        log.LogInformation("Watching {Count} folder(s) for new exports.", watcher.Folders.Count);
+
+        watcher.Start();
     }
 
     /// <summary>

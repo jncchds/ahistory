@@ -235,6 +235,101 @@ public sealed class ImportViewModelTests
         Assert.False(owner.IsSynthetic);
     }
 
+    /// <summary>
+    /// Watching a folder keeps the answers this import already gave.
+    /// </summary>
+    /// <remarks>
+    /// Which format, which source and which account are exactly the questions the page asked. A
+    /// scheduled re-import that asked them again could not run unattended, and one that guessed
+    /// could land in a different source than the user chose.
+    /// </remarks>
+    [Fact]
+    public async Task Watching_a_folder_remembers_the_format_the_source_and_the_account()
+    {
+        using var save = new TempSave();
+        using var watcher = save.Watcher();
+
+        var folder = save.WriteSampleExport();
+        var page = new ImportViewModel(save.Runner, new FakeFolderPicker(folder), logger: null, watcher);
+
+        await page.BrowseCommand.ExecuteAsync(null);
+
+        Assert.True(page.CanWatchThisFolder);
+
+        page.WatchCommand.Execute(null);
+
+        var watched = Assert.Single(page.WatchedFolders);
+
+        Assert.Equal(folder, watched.Path);
+        Assert.Equal("telegram", watched.Platform);
+        Assert.Equal(page.SelectedSource!.Id, watched.SourceId);
+        Assert.True(page.HasWatchedFolders);
+    }
+
+    [Fact]
+    public async Task Checking_watched_folders_imports_them_and_tells_the_rest_of_the_app()
+    {
+        using var save = new TempSave();
+        using var watcher = save.Watcher();
+
+        var page = new ImportViewModel(
+            save.Runner, new FakeFolderPicker(save.WriteSampleExport()), logger: null, watcher);
+
+        var notified = 0;
+        page.Imported += () => { notified++; return Task.CompletedTask; };
+
+        await page.BrowseCommand.ExecuteAsync(null);
+        page.WatchCommand.Execute(null);
+
+        await page.CheckWatchedCommand.ExecuteAsync(null);
+
+        Assert.Null(page.Error);
+        Assert.Equal(2, save.Queries.Summary().Messages);
+        Assert.Equal(1, notified);
+        Assert.Contains("2 new message(s)", page.WatchStatus!, StringComparison.Ordinal);
+
+        // Nothing has changed since, so a second look reads nothing and says so.
+        await page.CheckWatchedCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, notified);
+        Assert.Contains("unchanged", page.WatchStatus!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_folder_can_stop_being_watched()
+    {
+        using var save = new TempSave();
+        using var watcher = save.Watcher();
+
+        var page = new ImportViewModel(
+            save.Runner, new FakeFolderPicker(save.WriteSampleExport()), logger: null, watcher);
+
+        await page.BrowseCommand.ExecuteAsync(null);
+        page.WatchCommand.Execute(null);
+
+        page.UnwatchCommand.Execute(Assert.Single(page.WatchedFolders));
+
+        Assert.Empty(page.WatchedFolders);
+        Assert.False(page.HasWatchedFolders);
+        Assert.Empty(watcher.Folders);
+    }
+
+    /// <summary>
+    /// A build with no watcher shows no trace of the feature rather than a dead button.
+    /// </summary>
+    [Fact]
+    public async Task Without_a_watcher_the_page_offers_nothing_to_watch()
+    {
+        using var save = new TempSave();
+        var page = new ImportViewModel(save.Runner, new FakeFolderPicker(save.WriteSampleExport()));
+
+        await page.BrowseCommand.ExecuteAsync(null);
+
+        Assert.False(page.CanWatchFolders);
+        Assert.False(page.CanWatchThisFolder);
+        Assert.Empty(page.WatchedFolders);
+    }
+
     private sealed class FakeFolderPicker(string? folder) : IFolderPicker
     {
         public Task<string?> PickAsync(string title) => Task.FromResult(folder);

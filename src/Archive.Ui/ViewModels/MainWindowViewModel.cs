@@ -96,6 +96,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task Loaded() => await CurrentPage.RefreshAsync().ConfigureAwait(true);
 
+    /// <summary>
+    /// Reloads every page.
+    /// </summary>
+    /// <remarks>
+    /// What an import does from the page itself, made available to the head for the imports nobody
+    /// pressed a button for: a watched folder that changed while the reader was somewhere else.
+    /// Every page counts something out of the archive, so all of them are stale at once.
+    /// </remarks>
+    public async Task ReloadAsync()
+    {
+        foreach (var page in _all)
+        {
+            await page.RefreshAsync().ConfigureAwait(true);
+        }
+    }
+
     private void OnPageChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ViewModelBase.IsAvailable))

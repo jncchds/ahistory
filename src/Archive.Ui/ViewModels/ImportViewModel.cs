@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Archive.Import;
+using Archive.Sync;
 using Archive.Ui.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,7 +13,10 @@ namespace Archive.Ui.ViewModels;
 public sealed record SourceChoice(string Id, string Display, bool IsNew, bool IsSuggested);
 
 public sealed partial class ImportViewModel(
-    ImportRunner runner, IFolderPicker folderPicker, ILogger<ImportViewModel>? logger = null)
+    ImportRunner runner,
+    IFolderPicker folderPicker,
+    ILogger<ImportViewModel>? logger = null,
+    FolderWatcher? watcher = null)
     : ViewModelBase(logger)
 {
     public override string Title => "Import";
@@ -99,6 +103,158 @@ public sealed partial class ImportViewModel(
               + "If this is someone else's archive, import it into a separate save instead.";
 
     public bool CanImport => ExportFolder is not null && Preview is not null && !IsImporting;
+
+    /// <summary>
+    /// Folders re-read whenever a scheduled export changes them.
+    /// </summary>
+    /// <remarks>
+    /// The cheapest way to keep an archive current, and the only one that needs no account and no
+    /// network: SMS Backup &amp; Restore writes a backup every night, Takeout can be scheduled, and
+    /// re-import is idempotent (P3), so a folder can simply be read again whenever it changes.
+    /// </remarks>
+    public ObservableCollection<WatchedFolder> WatchedFolders { get; } = [];
+
+    public bool HasWatchedFolders => WatchedFolders.Count > 0;
+
+    /// <summary>Whether this build can watch folders at all — false in tests built without one.</summary>
+    public bool CanWatchFolders => watcher is not null;
+
+    public bool CanWatchThisFolder => watcher is not null && ExportFolder is not null && Preview is not null;
+
+    [ObservableProperty]
+    private string? _watchStatus;
+
+    [ObservableProperty]
+    private bool _isCheckingWatched;
+
+    /// <summary>Reloads the watched list; the page shows what the settings file currently says.</summary>
+    public override Task RefreshAsync()
+    {
+        LoadWatchedFolders();
+
+        return Task.CompletedTask;
+    }
+
+    private void LoadWatchedFolders()
+    {
+        WatchedFolders.Clear();
+
+        foreach (var folder in watcher?.Folders ?? [])
+        {
+            WatchedFolders.Add(folder);
+        }
+
+        OnPropertyChanged(nameof(HasWatchedFolders));
+    }
+
+    /// <summary>
+    /// Keeps the folder just imported in sync, with the answers this import already gave.
+    /// </summary>
+    /// <remarks>
+    /// The format, the source and the account are exactly what the questions above were for, so a
+    /// scheduled re-import never asks them again — and never lands in a different source than the
+    /// one the user picked the first time.
+    /// </remarks>
+    [RelayCommand]
+    private void Watch()
+    {
+        if (watcher is null || string.IsNullOrWhiteSpace(ExportFolder))
+        {
+            return;
+        }
+
+        watcher.Add(new WatchedFolder(
+            ExportFolder,
+            SelectedFormat?.Platform ?? Preview?.Platform,
+            SelectedSource?.Id,
+            string.IsNullOrWhiteSpace(OwnerAccountId) ? null : OwnerAccountId.Trim()));
+
+        LoadWatchedFolders();
+
+        WatchStatus = "This folder will be read again whenever a new export changes it, while the app is open.";
+    }
+
+    [RelayCommand]
+    private void Unwatch(WatchedFolder? folder)
+    {
+        if (watcher is null || folder is null)
+        {
+            return;
+        }
+
+        watcher.Remove(folder.Path);
+        LoadWatchedFolders();
+
+        WatchStatus = null;
+    }
+
+    /// <summary>Looks at every watched folder now, rather than waiting for a change or the timer.</summary>
+    [RelayCommand]
+    private async Task CheckWatched()
+    {
+        if (watcher is null)
+        {
+            return;
+        }
+
+        IsCheckingWatched = true;
+        Error = null;
+
+        try
+        {
+            var checks = await watcher.CheckAllAsync().ConfigureAwait(true);
+
+            WatchStatus = Describe(checks);
+
+            // Everything else on screen is counted from the archive, so it is stale the moment a
+            // watched folder brought something in.
+            if (checks.Any(c => c.Outcome == FolderCheckOutcome.Imported) && Imported is { } handler)
+            {
+                await handler().ConfigureAwait(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Checking watched folders failed.");
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsCheckingWatched = false;
+        }
+    }
+
+    private static string Describe(IReadOnlyList<FolderCheck> checks)
+    {
+        if (checks.Count == 0)
+        {
+            return "No folders are being watched yet.";
+        }
+
+        var parts = new List<string>();
+        var imported = checks.Where(c => c.Outcome == FolderCheckOutcome.Imported).ToArray();
+
+        if (imported.Length > 0)
+        {
+            parts.Add($"{imported.Sum(c => c.Stats!.MessagesInserted):N0} new message(s) from {imported.Length} folder(s)");
+        }
+
+        Count(FolderCheckOutcome.Unchanged, "unchanged");
+        Count(FolderCheckOutcome.Missing, "not reachable");
+        Count(FolderCheckOutcome.Failed, "could not be read");
+
+        return string.Join(", ", parts);
+
+        void Count(FolderCheckOutcome outcome, string label)
+        {
+            var n = checks.Count(c => c.Outcome == outcome);
+
+            if (n > 0)
+            {
+                parts.Add($"{n} {label}");
+            }
+        }
+    }
 
     [RelayCommand]
     private async Task Browse()
@@ -199,6 +355,7 @@ public sealed partial class ImportViewModel(
         OnPropertyChanged(nameof(AsksForAccount));
         OnPropertyChanged(nameof(AccountQuestion));
         OnPropertyChanged(nameof(CanImport));
+        OnPropertyChanged(nameof(CanWatchThisFolder));
     });
 
     [RelayCommand]

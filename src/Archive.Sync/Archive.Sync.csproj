@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Settings live in Directory.Build.props. Do not repeat them here. -->
+  <!--
+    Keeping an archive current: folders re-read when a scheduled export lands in them, and accounts
+    read from the platform itself (docs/live-sources-plan.md). The storage projects never reference
+    this one, so a platform client never becomes a dependency of the storage layer — the same rule
+    that keeps a model runtime out of it (SolutionLayoutTests).
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
+    <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
+    <ProjectReference Include="../Archive.Import/Archive.Import.csproj" />
+    <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Archive.Sync.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

@@ -51,6 +51,46 @@ public sealed class ImportRunner(
     }
 
     /// <summary>
+    /// Whether this folder, exactly as it is on disk now, has already been imported.
+    /// </summary>
+    /// <remarks>
+    /// What lets a watched folder be checked every few minutes for free. Re-importing an unchanged
+    /// export is already idempotent (P3), but it still reads every file; this compares the same
+    /// name-and-size fingerprint the run records, which touches no file's contents at all.
+    /// </remarks>
+    /// <param name="platform">
+    /// Which format, for a folder that holds several: a Takeout imported as Hangouts has not been
+    /// imported as Google Chat.
+    /// </param>
+    public bool IsAlreadyImported(string exportFolder, string? platform = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(exportFolder);
+
+        var folder = Path.GetFullPath(exportFolder);
+
+        if (!Directory.Exists(folder))
+        {
+            return false;
+        }
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1 FROM import
+                WHERE source_path = $path
+                  AND source_fingerprint = $fingerprint
+                  AND status = 'completed'
+                  AND ($platform IS NULL OR platform = $platform));
+            """;
+        command.Parameters.AddWithValue("$path", folder);
+        command.Parameters.AddWithValue("$fingerprint", Fingerprint(folder));
+        command.Parameters.AddWithValue("$platform", (object?)platform ?? DBNull.Value);
+
+        return Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) == 1;
+    }
+
+    /// <summary>
     /// Imports an export folder.
     /// </summary>
     /// <param name="exportFolder">The folder the export unpacked into.</param>

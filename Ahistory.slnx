@@ -8,6 +8,7 @@
     <Project Path="src/Archive.Import/Archive.Import.csproj" />
     <Project Path="src/Archive.Logging/Archive.Logging.csproj" />
     <Project Path="src/Archive.Media/Archive.Media.csproj" />
+    <Project Path="src/Archive.Sync/Archive.Sync.csproj" />
     <Project Path="src/Archive.Ui/Archive.Ui.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -16,6 +17,7 @@
     <Project Path="tests/Archive.Data.Tests/Archive.Data.Tests.csproj" />
     <Project Path="tests/Archive.Import.Tests/Archive.Import.Tests.csproj" />
     <Project Path="tests/Archive.Media.Tests/Archive.Media.Tests.csproj" />
+    <Project Path="tests/Archive.Sync.Tests/Archive.Sync.Tests.csproj" />
     <Project Path="tests/Archive.Ui.Tests/Archive.Ui.Tests.csproj" />
   </Folder>
 </Solution>

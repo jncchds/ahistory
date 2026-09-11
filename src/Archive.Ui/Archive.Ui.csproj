@@ -9,6 +9,7 @@
     <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
     <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />
     <ProjectReference Include="../Archive.Import/Archive.Import.csproj" />
+    <ProjectReference Include="../Archive.Sync/Archive.Sync.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -12,6 +12,7 @@ using Archive.Data;
 using Archive.Import;
 using Archive.Import.Synthetic;
 using Archive.Media;
+using Archive.Sync;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -38,6 +39,7 @@ internal static class Commands
                 "hash" => Hash(args),
                 "import" => Import(args),
                 "sources" => Sources(args),
+                "watch" => Watch(args),
                 "synth" => Synth(args),
                 "stats" => Stats(args),
                 "ai" => Ai(args),
@@ -409,6 +411,176 @@ internal static class Commands
         {
             Console.WriteLine("no sources yet — import an export first.");
         }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Watched folders: where a scheduled export lands, re-read when it changes.
+    /// </summary>
+    /// <remarks>
+    /// The cheapest way to keep an archive current, and it needs no network and no new reader: an
+    /// SMS backup written nightly, a Takeout scheduled every two months, a DiscordChatExporter run
+    /// on a timer. Re-import is idempotent (P3), so reading a folder again is safe; the fingerprint
+    /// means an unchanged one is not read at all.
+    /// </remarks>
+    private static int Watch(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine(
+                "usage: ahistory watch <save.db> [list | add <folder> [--format <p>] [--source <id>] [--me <id>] "
+                + "| remove <folder> | check | follow]");
+            return 2;
+        }
+
+        var options = new ArchiveOptions { DatabasePath = args[1] };
+        options.Validate();
+
+        var database = new Database(options, _loggerFactory.CreateLogger<Database>());
+        database.Migrate();
+
+        var runner = new ImportRunner(
+            database, new FileSystemMediaStore(options), _loggerFactory.CreateLogger<ImportRunner>());
+
+        var store = new SyncSettingsStore(logger: _loggerFactory.CreateLogger<SyncSettingsStore>());
+
+        using var watcher = new FolderWatcher(
+            runner, store, database.DatabasePath, _loggerFactory.CreateLogger<FolderWatcher>());
+
+        var command = args.Length > 2 && !args[2].StartsWith("--", StringComparison.Ordinal) ? args[2] : "list";
+
+        switch (command)
+        {
+            case "add":
+                if (args.Length < 4)
+                {
+                    Console.Error.WriteLine("usage: ahistory watch <save.db> add <folder> [--format <p>] [--source <id>] [--me <id>]");
+                    return 2;
+                }
+
+                watcher.Add(new WatchedFolder(
+                    Path.GetFullPath(args[3]),
+                    Option(args, "--format"),
+                    Option(args, "--source"),
+                    Option(args, "--me")));
+
+                Console.WriteLine($"watching {Path.GetFullPath(args[3])}");
+
+                // Read straight away rather than at the next change: someone who points at a folder
+                // means "import this", and waiting for it to change next would look like nothing
+                // happened.
+                return Check(watcher);
+
+            case "remove":
+                if (args.Length < 4)
+                {
+                    Console.Error.WriteLine("usage: ahistory watch <save.db> remove <folder>");
+                    return 2;
+                }
+
+                watcher.Remove(args[3]);
+                Console.WriteLine($"no longer watching {Path.GetFullPath(args[3])}");
+                return 0;
+
+            case "check":
+                return Check(watcher);
+
+            case "follow":
+                return Follow(watcher);
+
+            case "list":
+                var folders = watcher.Folders;
+
+                if (folders.Count == 0)
+                {
+                    Console.WriteLine("no watched folders — add one with `ahistory watch <save.db> add <folder>`.");
+                    return 0;
+                }
+
+                foreach (var folder in folders)
+                {
+                    Console.WriteLine(folder.Path);
+                    Console.WriteLine($"  format   {folder.Platform ?? "detected"}");
+                    Console.WriteLine($"  source   {folder.SourceId ?? "suggested at import"}");
+                    Console.WriteLine($"  present  {(Directory.Exists(folder.Path) ? "yes" : "no — not reachable right now")}");
+                }
+
+                return 0;
+
+            default:
+                Console.Error.WriteLine($"error: unknown watch command '{command}'");
+                return 2;
+        }
+    }
+
+    private static int Check(FolderWatcher watcher)
+    {
+        var checks = watcher.CheckAllAsync().GetAwaiter().GetResult();
+
+        if (checks.Count == 0)
+        {
+            Console.WriteLine("no watched folders.");
+            return 0;
+        }
+
+        var failed = false;
+
+        foreach (var check in checks)
+        {
+            Console.Write($"{check.Folder.Path}  ");
+
+            switch (check.Outcome)
+            {
+                case FolderCheckOutcome.Imported:
+                    Console.WriteLine($"imported — {check.Stats}");
+                    break;
+                case FolderCheckOutcome.Unchanged:
+                    Console.WriteLine("unchanged since the last import");
+                    break;
+                case FolderCheckOutcome.Missing:
+                    Console.WriteLine("not there right now");
+                    break;
+                case FolderCheckOutcome.Failed:
+                    failed = true;
+                    Console.WriteLine($"failed — {check.Error}");
+                    break;
+            }
+        }
+
+        return failed ? 1 : 0;
+    }
+
+    /// <summary>Stays running, importing each watched folder as it changes, until Ctrl+C.</summary>
+    private static int Follow(FolderWatcher watcher)
+    {
+        using var stopping = new ManualResetEventSlim(false);
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            // Handled here so the watcher stops cleanly rather than the process being torn down
+            // mid-import.
+            e.Cancel = true;
+            stopping.Set();
+        };
+
+        watcher.Checked += check =>
+        {
+            if (check.Outcome is FolderCheckOutcome.Imported or FolderCheckOutcome.Failed)
+            {
+                Console.WriteLine(
+                    $"{DateTimeOffset.Now:HH:mm:ss}  {check.Folder.Path}  "
+                    + (check.Outcome == FolderCheckOutcome.Imported ? $"imported — {check.Stats}" : $"failed — {check.Error}"));
+            }
+        };
+
+        watcher.Start();
+
+        Console.WriteLine($"watching {watcher.Folders.Count} folder(s). Ctrl+C to stop.");
+        stopping.Wait();
+
+        watcher.Stop();
+        Console.WriteLine("stopped.");
 
         return 0;
     }
@@ -877,6 +1049,11 @@ internal static class Commands
                                                 --me names your own account for the formats that
                                                 do not state one (VK, QIP)
               ahistory sources <save.db>        list the sources in a save
+              ahistory watch <save.db> [list | add <folder> [--format <p>] [--source <id>] [--me <id>]
+                                       | remove <folder> | check | follow]
+                                                keep a folder in sync: re-import it whenever a
+                                                scheduled export changes it. `check` looks once,
+                                                `follow` keeps looking until Ctrl+C
               ahistory stats <save.db>          what the archive is made of
               ahistory ai <save.db> [--segment] [--extract] [--all] [--consent] [--limit N]
                                                 what the AI layer has read of this archive.

@@ -139,6 +139,24 @@ public sealed class SolutionLayoutTests
         }
     }
 
+    /// <summary>
+    /// The storage layer does not reference the sync project either.
+    /// </summary>
+    /// <remarks>
+    /// Same direction, same reason as AI. <c>Archive.Sync</c> talks to platforms over the network,
+    /// and the storage layer is what every user gets whether or not they ever connect an account:
+    /// a reference from <c>Archive.Import</c> would put a Telegram client in the import path, where
+    /// reading a folder must stay a thing that touches nothing but that folder.
+    /// </remarks>
+    [Fact]
+    public void No_storage_project_references_the_sync_project()
+    {
+        foreach (var project in SourceProjects().Where(p => Storage.Contains(ProjectName(p))))
+        {
+            Assert.DoesNotContain("Archive.Sync", ProjectReferencesOf(project));
+        }
+    }
+
     [Fact]
     public void No_project_repeats_a_shared_build_property()
     {

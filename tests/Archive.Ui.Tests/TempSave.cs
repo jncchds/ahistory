@@ -41,6 +41,16 @@ internal sealed class TempSave : IDisposable
     internal ImportRunner Runner { get; }
 
     /// <summary>
+    /// A folder watcher writing to a settings file of this save's own.
+    /// </summary>
+    /// <remarks>
+    /// The directory matters: <c>sync.json</c> is per machine, and a test that used the real one
+    /// would rewrite what the person running the suite has watched.
+    /// </remarks>
+    internal Archive.Sync.FolderWatcher Watcher() =>
+        new(Runner, new Archive.Sync.SyncSettingsStore(Path.Combine(_directory, "settings")), Database.DatabasePath);
+
+    /// <summary>
     /// Runs SQL against the save.
     /// </summary>
     /// <remarks>
