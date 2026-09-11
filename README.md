@@ -88,7 +88,8 @@ something another person said.
 | **Google Chat** | the Takeout folder containing `Google Chat`, or the Takeout root | Built to Takeout's layout; not yet run against a real export |
 | **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
 | **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format; reverse engineered, then corrected against real files |
-| WhatsApp, Meta (Facebook/Instagram) | — | Planned |
+| **Facebook Messenger**, **Instagram** | the unpacked "download your information" folder, in JSON | Built to the documented layout; no message or account ids, so people are matched by name |
+| WhatsApp | — | Planned |
 | Signal, iMessage, Discord | — | Under consideration: local databases, or need third-party tooling |
 
 Point the app at the folder and it works out which format it is, says so, and refuses rather than

@@ -29,6 +29,10 @@ public sealed class NoArchiveDataInTheRepositoryTests
         "Hangouts.json",
         "group_info.json",
         "user_info.json",
+        // Meta: Messenger and Instagram threads, and the profile files that name the owner.
+        "message_1.json",
+        "profile_information.json",
+        "personal_information.json",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",

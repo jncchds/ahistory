@@ -1,5 +1,6 @@
 using Archive.Import.GoogleChat;
 using Archive.Import.Hangouts;
+using Archive.Import.Meta;
 using Archive.Import.Qip;
 using Archive.Import.Telegram;
 using Archive.Import.Vk;
@@ -38,6 +39,8 @@ public sealed class ImporterRegistry
             new TelegramImporter(),
             new HangoutsImporter(),
             new GoogleChatImporter(),
+            new MessengerImporter(),
+            new InstagramImporter(),
             new VkImporter(),
             new QipImporter(),
         ];

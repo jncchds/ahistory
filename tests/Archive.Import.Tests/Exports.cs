@@ -230,6 +230,28 @@ internal static class Exports
                     .Reaction("👍", "owner@example.com", "sam@example.com")
                     .Edited(At(1615843900))));
 
+    private static DateTimeOffset Ms(long unixMs) => DateTimeOffset.FromUnixTimeMilliseconds(unixMs);
+
+    /// <summary>
+    /// A Messenger download: a DM with a photo on disk and a call, and a named group whose text and
+    /// names are Cyrillic and emoji — all of it double-encoded, as Meta writes it.
+    /// </summary>
+    internal static MetaExportBuilder Messenger(MetaLayout layout = MetaLayout.Current, string? owner = "Owner Synthetic") =>
+        MetaExportBuilder.Facebook(owner, layout)
+            .Thread("samruiz_1234567890", "Sam Ruiz", ["Sam Ruiz", "Owner Synthetic"], t => t
+                .Message("Sam Ruiz", Ms(1615757463123), "the harbour was freezing")
+                .Message("Owner Synthetic", Ms(1615757523123), "look", m => m.Photo("harbour.jpg", seed: 11))
+                .Call("Sam Ruiz", Ms(1615757583123), 61))
+            .Thread("praguetrip_9876543210", "Prague trip", ["Owner Synthetic", "Sam Ruiz", "Марина Коваль"], t => t
+                .Message("Марина Коваль", Ms(1615843863000), "мы были в Праге весной 🌷", m => m
+                    .Reaction("❤", "Sam Ruiz")));
+
+    /// <summary>An Instagram download with one conversation.</summary>
+    internal static MetaExportBuilder Instagram(MetaLayout layout = MetaLayout.Current) =>
+        MetaExportBuilder.Instagram("Owner Synthetic", layout)
+            .Thread("samruiz_555", "Sam Ruiz", ["Sam Ruiz", "Owner Synthetic"], t => t
+                .Message("Sam Ruiz", Ms(1615757463123), "saw your story"));
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()
