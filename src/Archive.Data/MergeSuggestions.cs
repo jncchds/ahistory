@@ -197,6 +197,7 @@ public sealed class MergeSuggestions(Database database)
         "sms" => "SMS",
         "whatsapp" => "WhatsApp",
         "skype" => "Skype",
+        "discord" => "Discord",
         "vk" => "VKontakte",
         "qip" => "QIP",
         var other => other,

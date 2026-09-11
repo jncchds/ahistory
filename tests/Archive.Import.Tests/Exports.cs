@@ -329,6 +329,41 @@ internal static class Exports
             .Conversation("48:calllogs", "Call logs", c => c
                 .Call("1615757583002", At(1615757583), SkypeSam, "Sam Ruiz"));
 
+    internal static DiscordUser DiscordOwner { get; } = new("100000000000000001", "owner", "Owner Synthetic");
+
+    internal static DiscordUser DiscordSam { get; } = new("100000000000000002", "sam", "Sam Ruiz");
+
+    internal static DiscordUser DiscordAlex { get; } = new("100000000000000003", "alex", "Alex Novak");
+
+    internal const string DiscordDmChannel = "200000000000000001";
+
+    /// <summary>
+    /// A Discord data package: a DM in CSV with a message that needs quoting and one with a linked
+    /// attachment, a group DM in the newer JSON, and a server channel — only the owner's messages.
+    /// </summary>
+    internal static DiscordPackageBuilder DiscordPackage() =>
+        DiscordPackageBuilder.New(DiscordOwner)
+            .Dm(DiscordDmChannel, DiscordOwner, DiscordSam, c => c
+                .Message("300000000000000001", At(1615757463), "the harbour was freezing, really\n\"freezing\"")
+                .Message("300000000000000002", At(1615757523), "look", "https://cdn.discordapp.com/attachments/2/3/harbour.jpg"))
+            .GroupDm("200000000000000002", "Prague trip", [DiscordOwner, DiscordSam, DiscordAlex], c => c
+                .Message("300000000000000003", At(1615843863), "мы были в Праге весной 🌷"), json: true)
+            .GuildChannel("200000000000000003", "Book Club", "general", c => c
+                .Message("300000000000000004", At(1615930263), "see you thursday"));
+
+    /// <summary>
+    /// A DiscordChatExporter file for the same DM: the owner's first message again, Sam's reply
+    /// with a reaction, a downloaded photo, and a call.
+    /// </summary>
+    internal static DiscordChatExporterBuilder DiscordExport() =>
+        DiscordChatExporterBuilder.Dm(DiscordDmChannel, "sam")
+            .Message("300000000000000001", At(1615757463), DiscordOwner, "the harbour was freezing, really\n\"freezing\"")
+            .Message("300000000000000005", At(1615757500), DiscordSam, "it was", m => m
+                .Reply("300000000000000001")
+                .Reaction("👍", 3, DiscordOwner))
+            .Message("300000000000000006", At(1615757560), DiscordSam, string.Empty, m => m.Attachment("harbour view.jpg", seed: 41))
+            .Message("300000000000000007", At(1615757600), DiscordSam, string.Empty, type: "Call");
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

@@ -63,6 +63,7 @@ public sealed partial class AccountItem : ObservableObject
         "sms" => "SMS",
         "whatsapp" => "WhatsApp",
         "skype" => "Skype",
+        "discord" => "Discord",
         "vk" => "VK",
         "qip" => "QIP",
         var other => other,

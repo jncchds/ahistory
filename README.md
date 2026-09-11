@@ -92,7 +92,8 @@ something another person said.
 | **Facebook Messenger**, **Instagram** | the unpacked "download your information" folder, in JSON | Built to the documented layout; no message or account ids, so people are matched by name |
 | **SMS and MMS** (Android) | the folder holding the `sms-….xml` from SMS Backup & Restore | Built to the app's documented format; people are keyed by phone number |
 | **WhatsApp** | the folder holding the exported chat `.txt` files, unzipped, with their media | Built to the export as documented; **not yet run against a real export**, and the format varies by phone and locale |
-| Signal, iMessage, Discord | — | Under consideration: local databases, or need third-party tooling |
+| **Discord** | the unpacked data package, or a folder of DiscordChatExporter `.json` files | Built to both documented shapes. **The package holds only your own messages**; DiscordChatExporter holds everyone's |
+| Signal, iMessage | — | Under consideration: encrypted or device-local databases, which need a decrypt step outside the app |
 
 Point the app at the folder and it works out which format it is, says so, and refuses rather than
 guessing if it does not recognize it.

@@ -37,6 +37,9 @@ public sealed class NoArchiveDataInTheRepositoryTests
         "_chat.txt",
         // Skype's export, Google Chat's per-conversation file, and Discord's newer package.
         "messages.json",
+        // Discord's data package: a channel's header and its messages.
+        "channel.json",
+        "messages.csv",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",
