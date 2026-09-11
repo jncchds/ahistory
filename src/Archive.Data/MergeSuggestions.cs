@@ -194,6 +194,7 @@ public sealed class MergeSuggestions(Database database)
         "googlechat" => "Google Chat",
         "messenger" => "Facebook Messenger",
         "instagram" => "Instagram",
+        "sms" => "SMS",
         "vk" => "VKontakte",
         "qip" => "QIP",
         var other => other,

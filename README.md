@@ -89,6 +89,7 @@ something another person said.
 | **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
 | **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format; reverse engineered, then corrected against real files |
 | **Facebook Messenger**, **Instagram** | the unpacked "download your information" folder, in JSON | Built to the documented layout; no message or account ids, so people are matched by name |
+| **SMS and MMS** (Android) | the folder holding the `sms-….xml` from SMS Backup & Restore | Built to the app's documented format; people are keyed by phone number |
 | WhatsApp | — | Planned |
 | Signal, iMessage, Discord | — | Under consideration: local databases, or need third-party tooling |
 

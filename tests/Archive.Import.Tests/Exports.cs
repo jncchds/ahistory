@@ -252,6 +252,24 @@ internal static class Exports
             .Thread("samruiz_555", "Sam Ruiz", ["Sam Ruiz", "Owner Synthetic"], t => t
                 .Message("Sam Ruiz", Ms(1615757463123), "saw your story"));
 
+    internal const string OwnNumber = "+15550000000";
+    internal const string SamNumber = "+15551234567";
+    internal const string AlexNumber = "+15559876543";
+
+    /// <summary>
+    /// An SMS backup: a conversation with Sam — one of their texts under a formatted number, one of
+    /// yours with an emoji — a draft that must not be imported, and a group picture message you sent.
+    /// </summary>
+    internal static SmsBackupBuilder Sms(bool withPicture = true) =>
+        SmsBackupBuilder.New()
+            .Sms(SamNumber, At(1615757463), 1, "the harbour was freezing", "Sam Ruiz")
+            .Sms(SamNumber, At(1615757523), 2, "we should go back 🌊", "Sam Ruiz")
+            .Sms("+1 (555) 123-4567", At(1615843863), 1, "мы были в Праге весной", "Sam Ruiz")
+            .Sms(SamNumber, At(1615843900), 3, "never sent", "Sam Ruiz")
+            .Mms(At(1615930263), 2, [(OwnNumber, 137), (SamNumber, 151), (AlexNumber, 151)], "look",
+                new SmsMmsPart("image/jpeg", "IMG_0001.jpg", withPicture ? SyntheticMedia.Bytes(seed: 21) : null),
+                mId: "mms-0001", contactName: "Sam Ruiz, Alex Novak");
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

@@ -60,6 +60,7 @@ public sealed partial class AccountItem : ObservableObject
         "googlechat" => "Google Chat",
         "messenger" => "Messenger",
         "instagram" => "Instagram",
+        "sms" => "SMS",
         "vk" => "VK",
         "qip" => "QIP",
         var other => other,

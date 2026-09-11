@@ -30,7 +30,18 @@ public sealed record NormalizedMedia(
     string? StickerEmoji,
     long? Width,
     long? Height,
-    long? DurationSeconds);
+    long? DurationSeconds)
+{
+    /// <summary>
+    /// The file's bytes, for a format that carries them inline rather than beside the export.
+    /// </summary>
+    /// <remarks>
+    /// An SMS backup holds every MMS picture as base64 inside its XML, so there is no file to find.
+    /// When set, <see cref="ExportPath"/> is a description rather than a path, and the extension is
+    /// taken from <see cref="OriginalFilename"/>.
+    /// </remarks>
+    public byte[]? Content { get; init; }
+}
 
 /// <summary>
 /// One reaction bucket.

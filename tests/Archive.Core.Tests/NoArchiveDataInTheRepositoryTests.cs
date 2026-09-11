@@ -86,6 +86,21 @@ public sealed class NoArchiveDataInTheRepositoryTests
         Assert.Empty(offenders);
     }
 
+    /// <summary>SMS Backup &amp; Restore names its files <c>sms-&lt;timestamp&gt;.xml</c>.</summary>
+    [Fact]
+    public void No_file_in_the_repository_looks_like_an_sms_backup()
+    {
+        var offenders = Walk(RepoRoot.Find())
+            .Where(file =>
+                (file.Name.StartsWith("sms-", StringComparison.OrdinalIgnoreCase)
+                 || file.Name.StartsWith("calls-", StringComparison.OrdinalIgnoreCase))
+                && file.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            .Select(file => file.FullName)
+            .ToArray();
+
+        Assert.Empty(offenders);
+    }
+
     /// <summary>
     /// The old fixtures folder stays gone.
     /// </summary>

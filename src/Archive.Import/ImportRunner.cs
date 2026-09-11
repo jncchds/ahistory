@@ -307,6 +307,17 @@ public sealed class ImportRunner(
                 return null;
             }
 
+            if (media.Content is { } content)
+            {
+                // Carried inside the export itself — an SMS backup's MMS parts are base64 in its
+                // XML — so there is no file to look for and nothing to count as absent.
+                using var inline = new MemoryStream(content, writable: false);
+
+                return Counted(mediaStore
+                    .PutAsync(inline, Path.GetExtension(media.OriginalFilename ?? media.ExportPath))
+                    .GetAwaiter().GetResult());
+            }
+
             var path = Path.Combine(exportFolder, media.ExportPath.Replace('/', Path.DirectorySeparatorChar));
 
             if (!File.Exists(path))
@@ -335,6 +346,11 @@ public sealed class ImportRunner(
                 return null;
             }
 
+            return Counted(result);
+        }
+
+        private StoredMedia Counted(MediaPutResult result)
+        {
             if (result.WasNew)
             {
                 committer.Stats.MediaStored++;

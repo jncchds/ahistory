@@ -28,11 +28,17 @@ public static class SyntheticMedia
         var path = Path.Combine(folder, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-        var bytes = new byte[byteCount];
-        new Random(seed).NextBytes(bytes);
-        File.WriteAllBytes(path, bytes);
+        File.WriteAllBytes(path, Bytes(seed, byteCount));
 
         return relativePath;
+    }
+
+    /// <summary>The same deterministic bytes, for formats that carry attachments inline.</summary>
+    public static byte[] Bytes(int seed = 1, int byteCount = 2048)
+    {
+        var bytes = new byte[byteCount];
+        new Random(seed).NextBytes(bytes);
+
+        return bytes;
     }
 }
