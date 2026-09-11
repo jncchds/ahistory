@@ -389,6 +389,32 @@ internal static class Exports
             .Mpim("G0TRIP", "mpdm-owner--sam--alex-1", [SlackOwner.Id, SlackSam.Id, SlackAlex.Id], c => c
                 .Message("1615930263.000100", SlackSam.Id, "tickets?"));
 
+    internal const string VoiceOwner = "+15550000000";
+
+    internal static VoiceContact VoiceSam { get; } = new("+15551234567", "Sam Ruiz");
+
+    internal static VoiceContact VoiceAlex { get; } = new("+15559876543", "Alex Novak");
+
+    private static readonly TimeSpan Eastern = TimeSpan.FromHours(-4);
+
+    /// <summary>
+    /// A Google Voice Takeout: texts with Sam over two files — a picture and a line break among them
+    /// — a group text, a received and a missed call, and a voicemail with its transcript and audio.
+    /// </summary>
+    internal static GoogleVoiceExportBuilder GoogleVoice() =>
+        GoogleVoiceExportBuilder.New(VoiceOwner)
+            .Text(VoiceSam, At(1615757463, Eastern), t => t
+                .Message(At(1615757463, Eastern), VoiceSam, "the harbour was freezing")
+                .Message(At(1615757523, Eastern), null, "first line\nsecond line", pictureSeed: 51))
+            .Text(VoiceSam, At(1615843863, Eastern), t => t
+                .Message(At(1615843863, Eastern), VoiceSam, "мы были в Праге весной"))
+            .Group([VoiceSam, VoiceAlex], At(1615930263, Eastern), t => t
+                .Message(At(1615930263, Eastern), VoiceAlex, "tickets?")
+                .Message(At(1615930323, Eastern), null, "booked"))
+            .Call(VoiceSam, "Received", At(1615760000, Eastern), TimeSpan.FromSeconds(65))
+            .Call(VoiceSam, "Missed", At(1615761000, Eastern), TimeSpan.Zero)
+            .Call(VoiceAlex, "Voicemail", At(1615762000, Eastern), TimeSpan.FromSeconds(12), "call me back about the tickets", audioSeed: 52);
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

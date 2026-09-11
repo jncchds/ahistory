@@ -53,6 +53,12 @@ public sealed class NoArchiveDataInTheRepositoryTests
         ".db-shm",
     ];
 
+    /// <summary>Google Voice names each file <c>&lt;who&gt; - &lt;kind&gt; - &lt;time&gt;.html</c>.</summary>
+    private static readonly string[] VoiceKinds =
+    [
+        " - Text - ", " - Received - ", " - Placed - ", " - Missed - ", " - Voicemail - ", " - Recorded - ",
+    ];
+
     /// <summary>Build output and version control, which are not part of the repository's content.</summary>
     private static readonly string[] SkippedDirectories =
     [
@@ -110,7 +116,10 @@ public sealed class NoArchiveDataInTheRepositoryTests
                   || file.Name.StartsWith("calls-", StringComparison.OrdinalIgnoreCase))
                  && file.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                 || (file.Name.StartsWith("WhatsApp Chat", StringComparison.OrdinalIgnoreCase)
-                    && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)))
+                    && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                || ((VoiceKinds.Any(k => file.Name.Contains(k, StringComparison.Ordinal))
+                     || file.Name.StartsWith("Group Conversation - ", StringComparison.Ordinal))
+                    && file.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase)))
             .Select(file => file.FullName)
             .ToArray();
 

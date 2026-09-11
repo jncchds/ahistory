@@ -1,5 +1,6 @@
 using Archive.Import.Discord;
 using Archive.Import.GoogleChat;
+using Archive.Import.GoogleVoice;
 using Archive.Import.Hangouts;
 using Archive.Import.Meta;
 using Archive.Import.Qip;
@@ -44,6 +45,7 @@ public sealed class ImporterRegistry
             new TelegramImporter(),
             new HangoutsImporter(),
             new GoogleChatImporter(),
+            new GoogleVoiceImporter(),
             new MessengerImporter(),
             new InstagramImporter(),
             new SmsBackupImporter(),

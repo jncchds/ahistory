@@ -89,6 +89,7 @@ something another person said.
 | **Skype** | the unpacked `.tar` from "Export files and chat history", containing `messages.json` | Built to the export as documented; real message ids, but shared files are linked rather than included |
 | **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
 | **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format; reverse engineered, then corrected against real files |
+| **Google Voice** | the Takeout folder containing `Voice/Calls`, or the Takeout root | Built to Takeout's markup; texts, calls and voicemail transcripts, keyed by phone number |
 | **Facebook Messenger**, **Instagram** | the unpacked "download your information" folder, in JSON | Built to the documented layout; no message or account ids, so people are matched by name |
 | **SMS and MMS** (Android) | the folder holding the `sms-….xml` from SMS Backup & Restore | Built to the app's documented format; people are keyed by phone number |
 | **WhatsApp** | the folder holding the exported chat `.txt` files, unzipped, with their media | Built to the export as documented; **not yet run against a real export**, and the format varies by phone and locale |

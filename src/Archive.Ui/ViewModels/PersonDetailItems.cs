@@ -65,6 +65,7 @@ public sealed partial class AccountItem : ObservableObject
         "skype" => "Skype",
         "discord" => "Discord",
         "slack" => "Slack",
+        "googlevoice" => "Google Voice",
         "vk" => "VK",
         "qip" => "QIP",
         var other => other,
