@@ -920,3 +920,63 @@ this was developed against — does not. A user who wants fully local transcript
 transcription model at a separate local speech server, or goes without. What it buys: the AI half of
 the app adds nothing native to the download, `No_storage_project_takes_an_ai_dependency` still has
 nothing to catch, and a build that never enables AI is byte for byte what it would be without it.
+
+## D33 — Nine more readers, and what formats without ids or zones cost
+
+Google Chat, Google Voice, Facebook Messenger, Instagram, SMS and MMS, WhatsApp, Skype, Discord and
+Slack were added under D20's rule, and again no schema change was needed. Two shared-path changes
+were: `ImporterRegistry.DetectAll`, because a Takeout or a Meta download is two or three exports in
+one folder and returning only the best match imported part of a history silently (the roadmap's
+G1); and `NormalizedMedia.Content`, because an SMS backup carries its MMS pictures as base64 inside
+the XML and there is no file to find.
+
+### Formats with no message id
+
+Meta, WhatsApp, SMS texts, Google Voice, and Google Chat exports older than `message_id` give
+nothing stable to key a message on. The uid is derived: the conversation, the time, a hash of the
+sender and the content, and an **occurrence count of that same combination** — not a position.
+Counting by what a message is rather than where it sits means deleting an earlier message before
+re-exporting does not shift every later uid. Counts are per file, so two overlapping SMS backups
+give a shared message the same uid and it is stored once.
+
+The cost, stated in each of these previews: an edit is indistinguishable from a new message, so the
+revision behaviour P2 promises becomes "a changed message is a second message" for these formats.
+
+### Wall-clock time with no zone is taken as UTC
+
+WhatsApp writes times with no zone, and so does Discord's newer package JSON. The roadmap's G4
+proposed asking for the export's zone in the preview. It was not built: a single offset is only
+right for someone who never travelled and whose country never changed its clocks, so an asked-for
+zone would move part of any long archive by an hour or more while looking authoritative. Taking the
+times as UTC is what the VK reader already did — the time shown is the time the phone showed —
+and each such preview says so.
+
+### WhatsApp's date order is inferred, and refused when it cannot be
+
+`03/04/21` is two different days. The order is decided per chat: a day above twelve settles it;
+failing that, the reading that keeps the chat in sequence wins, since the wrong one jumps back months
+at every month change; a chat too short to say borrows the order of chats written in the same shape.
+Otherwise the import stops and says to export a longer stretch. It never defaults. Dotted dates are
+read day first, the only order any locale writes them in, and a two-digit year is this century.
+
+### Other decisions worth keeping
+
+- **Phone numbers lose their formatting and nothing else.** SMS, WhatsApp and Google Voice share
+  `SmsBackupImporter.Normalize`. No country code is ever added — which country a local number
+  belonged to is not in any of these files. Identities stay per platform, so a number on SMS and the
+  same number on WhatsApp are still two accounts until merged (D29); suggesting merges on an exact
+  number is the obvious next step and is not built.
+- **One JSON, two platforms (G2).** Messenger and Instagram share a reader and keep separate identity
+  namespaces. Instagram is claimed only when the download says it is Instagram's.
+- **Two shapes, one platform.** Discord's data package and DiscordChatExporter describe the same
+  messages with the same snowflakes, so they share `discord` and a message in both is stored once.
+  The package holds only the owner's own messages, and its preview says so.
+- **Single-file formats are read from their folder (G5 not needed).** Every one here — the SMS XML,
+  the WhatsApp text files, Skype's `messages.json` — is found in the folder the user points at, so
+  the import page stayed a folder picker.
+- **Owners** are read where the format states one (Google Chat, Skype, the Discord package, Meta's
+  profile files, Google Voice's "Me", the From address on a sent MMS); inferred as the one person in
+  every conversation when there are at least two to compare; and otherwise asked for, under D25.
+
+None of the nine has met a real export. D22 is the standing warning, and WhatsApp — whose format
+varies by phone, app version and locale — is where it applies most.

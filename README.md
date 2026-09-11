@@ -23,7 +23,7 @@ and the archive stays fully usable while that work runs in the background. This 
 
 ## Status
 
-**0.1.0.** The archive itself: schema, four importers, media store, per-person conversation view,
+**0.1.0.** The archive itself: schema, thirteen importers, media store, per-person conversation view,
 keyword search, and standalone builds for all three desktop platforms.
 
 | Milestone | | |
@@ -100,9 +100,9 @@ something another person said.
 Point the app at the folder and it works out which format it is, says so, and refuses rather than
 guessing if it does not recognize it.
 
-**Telegram and QIP have met real archives.** Google Hangouts and VK are built to the formats as
-documented and covered by tests, which proves they do what was intended — not that what was
-intended matches what is on your disk. All four are deliberately strict: anything a reader does not
+**Telegram and QIP have met real archives.** Every other reader is built to its format as
+documented and covered by tests, which proves it does what was intended — not that what was
+intended matches what is on your disk. All of them are deliberately strict: anything a reader does not
 understand stops the import and names it, because for an archive a reader that silently mangles a
 third of your messages is far worse than one that stops.
 

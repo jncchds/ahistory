@@ -170,8 +170,8 @@ the kind of failure that gets re-run until it passes and never diagnosed. Use
 committed — not a `result.json`, not a `.qhf`, not a VK message page, however synthetic. A file in
 the source tree that looks like an export is one careless copy away from being somebody's real
 correspondence, which is the same thing P6 refuses to let into a log. Export *shapes* are built in
-code by `Archive.Import.Synthetic` (`TelegramExportBuilder`, `HangoutsExportBuilder`,
-`VkExportBuilder`, `QipHistoryBuilder`) and written to a temp folder when a test runs; tests still
+code by `Archive.Import.Synthetic` — one builder per format, `TelegramExportBuilder` through
+`WhatsAppChatBuilder` — and written to a temp folder when a test runs; tests still
 read real folders, because that is most of what an importer does. `NoArchiveDataInTheRepositoryTests`
 enforces it. A real archive for local testing goes in `scratch/`, which is ignored.
 

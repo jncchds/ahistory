@@ -8,6 +8,12 @@
 > not from a file on anyone's disk. [D22](decisions.md) is the standing warning about exactly
 > that.
 
+**Status, 2026-09-11.** Built: G1; Google Chat; Meta (Messenger and Instagram); SMS and MMS;
+WhatsApp; Skype's export JSON; Discord's data package and DiscordChatExporter; Slack; and Google
+Voice, which this survey did not list. The decisions they forced are [D33](decisions.md). Not built:
+Skype's legacy `main.db`, Signal, iMessage, Viber, LINE, WeChat, Miranda and Mail.ru Agent. None of
+the new readers has met a real export yet.
+
 ---
 
 # Adding platforms to the importer
@@ -75,6 +81,8 @@ distinguished by which activity folder the threads sit under, costs nothing and 
 the simple constant it is. Written down here so it stays a decision rather than something
 rediscovered later as a defect.
 
+**Done** as described: `MessengerImporter` and `InstagramImporter` over `MetaMessagesReader`.
+
 ### G3 — No stable message id
 
 Meta, WhatsApp and SMS all lack one, so the uid has to be derived — thread, timestamp, and an
@@ -87,6 +95,10 @@ immutable in practice; WhatsApp is not. The ordinal is also only stable while ea
 prefix-extension of the last one — a chat the user has deleted messages from re-imports as new
 messages from the deletion point onward.
 
+**Done**, with one change: the ordinal counts repeats of the same time, sender and content rather
+than position, so a deletion earlier in a chat does not shift later uids. Used by Meta, WhatsApp,
+SMS, Google Voice, and Google Chat exports too old to carry `message_id` ([D33](decisions.md)).
+
 ### G4 — Wall-clock time with no zone
 
 `SentAtUnix` is required and non-null. WhatsApp gives `[14/03/2021, 22:41:03]` and nothing else.
@@ -98,11 +110,18 @@ same way `OwnerAccountId` already extends it — asked in the preview, defaulted
 recorded as a guess under [D25](decisions.md). None of the four current formats needed this;
 QIP, the closest in spirit, stores Unix seconds.
 
+**Decided differently.** No zone is asked for. A single offset is wrong for part of any long archive
+kept by someone who travelled or whose clocks changed, so zoneless times are taken as UTC — the VK
+reader's precedent — and the preview says so ([D33](decisions.md)).
+
 ### G5 — Single-file exports
 
 `ImportRunner.Locate` and `Fingerprint` both assume a directory. `.txt`, `.xml`, `.db` and
 `.zip` all have to become legal import targets. Mechanical, but it touches the shared path, so
 it is done once rather than per importer.
+
+**Not needed.** Every single-file format built so far is read from the folder holding it, so the
+import page stayed a folder picker ([D33](decisions.md)).
 
 ### And one thing to keep out
 
