@@ -381,6 +381,8 @@ public sealed partial class PersonViewModel(
         {
             _isLoadingPage = false;
         }
+
+        await MarkUnreadAsync().ConfigureAwait(true);
     }
 
     private async Task AppendNewerPageAsync(string personId)
@@ -429,8 +431,40 @@ public sealed partial class PersonViewModel(
         {
             _isLoadingPage = false;
         }
+
+        await MarkUnreadAsync().ConfigureAwait(true);
     }
 
     private Task<IReadOnlyList<PersonMessageRow>> LoadContextAsync(long messageId) =>
         Task.Run(() => conversation.Context(messageId));
+
+    /// <summary>
+    /// Marks where a stretch the model has not read begins.
+    /// </summary>
+    /// <remarks>
+    /// Once per stretch, on its first loaded message, and quietly: this is the answer to "is the
+    /// facts panel empty because nothing happened, or because nothing has been read" (§7), not a
+    /// badge on every bubble. With AI off the panel reports nothing unread, and nothing is marked.
+    /// </remarks>
+    private async Task MarkUnreadAsync()
+    {
+        if (Facts is null)
+        {
+            return;
+        }
+
+        var messages = Items.OfType<MessageItem>().ToList();
+        var sessions = messages.Select(m => m.Row.SessionId).OfType<string>().Distinct().ToList();
+        var unread = await Facts.UnreadAsync(sessions).ConfigureAwait(true);
+
+        string? previous = null;
+
+        foreach (var message in messages)
+        {
+            var session = message.Row.SessionId;
+
+            message.IsUnreadByAi = session is not null && session != previous && unread.Contains(session);
+            previous = session;
+        }
+    }
 }

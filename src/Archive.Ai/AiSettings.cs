@@ -79,8 +79,34 @@ public sealed class AiSettings
     /// </remarks>
     public string UtilityModel { get; set; } = string.Empty;
 
-    /// <summary>Unused until A6. Blank is not an error.</summary>
+    /// <summary>
+    /// What sessions are embedded with for search by meaning. Blank means search stays keyword-only.
+    /// </summary>
+    /// <remarks>
+    /// Changing it does not break search: the old vectors stay and keep answering until the new
+    /// model has covered the archive, then search moves across in one step (ai-plan.md §9.2).
+    /// </remarks>
     public string EmbeddingModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A model that can read images, used to copy the text out of screenshots (spec §3).
+    /// </summary>
+    /// <remarks>
+    /// Blank means images are not read, which is the default: every photo is a call, and a photo
+    /// is often more private than the messages around it. Often the main model itself, when it is
+    /// one that can see.
+    /// </remarks>
+    public string VisionModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A speech-to-text model on the same endpoint, for voice and video messages.
+    /// </summary>
+    /// <remarks>
+    /// Blank means nothing is transcribed. Only an endpoint that serves
+    /// <c>/audio/transcriptions</c> can do this — OpenAI does, and so do several local servers;
+    /// most chat-only servers do not, and a job sent to one fails visibly rather than quietly.
+    /// </remarks>
+    public string TranscriptionModel { get; set; } = string.Empty;
 
     /// <summary>
     /// The language facts and diary entries are written in — not the language of the archive.
@@ -106,8 +132,23 @@ public sealed class AiSettings
     /// <summary>How many model calls the background runner may have in flight.</summary>
     public int MaxParallelCalls { get; set; } = 2;
 
-    /// <summary>Stop the run once this many tokens have been spent. 0 means no cap.</summary>
-    public long TokenBudget { get; set; }
+    /// <summary>
+    /// The most tokens model work may spend in any 24 hours; 0 means no cap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A rolling day rather than a total per run, because there is no run: the runner starts
+    /// every time the app opens, and a cap that reset on every launch would protect nothing on a
+    /// paid endpoint. It is measured from the calls recorded in the save, so it holds across
+    /// restarts.
+    /// </para>
+    /// <para>
+    /// Reaching it holds model work — not failed, not dropped — and the work resumes by itself as
+    /// the window moves on. Calls already in flight finish, so the cap can be overshot by at most
+    /// one call per parallel slot.
+    /// </para>
+    /// </remarks>
+    public long DailyTokenBudget { get; set; }
 
     /// <summary>
     /// Record the full request and response of every call.

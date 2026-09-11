@@ -159,6 +159,7 @@ internal static class Program
         AddPage<ThreadsViewModel>(services);
         AddPage<AiSettingsViewModel>(services);
         AddPage<AiStatsViewModel>(services);
+        AddPage<DiaryViewModel>(services);
 
         // Not a page: the panel beside a conversation. Registered so the conversation page can
         // take it, and simply absent from a build without the AI layer.
@@ -205,16 +206,26 @@ internal static class Program
 
         state.Changed += (_, _) =>
         {
-            if (state.Current.Enabled)
+            if (!state.Current.Enabled)
             {
-                work.PlanSegmentation();
+                return;
+            }
+
+            work.PlanSegmentation();
+
+            // A settings change is one of the invalidations §11.1 lists — a new embedding model, a
+            // vision model switched on — so what it made out of date is queued now, not at the next
+            // restart. Off the UI thread: it is a pass over the archive.
+            if (AiConsent.CoversExtraction(state.Current, factory))
+            {
+                _ = Task.Run(work.PlanAll);
             }
         };
 
-        // Segmentation needs nobody's permission. Reading sessions with a model does, so follow-up
-        // extraction is queued on its own only for an endpoint the user has already said yes to
+        // Segmentation needs nobody's permission. Everything that sends text to a model does, so
+        // it is queued on its own only for an endpoint the user has already said yes to
         // (ai-plan.md §11.2). Until then the activity page's Start button is where it begins.
-        runner.Replan = () => AiConsent.CoversExtraction(state.Current, factory) ? work.PlanExtraction() : 0;
+        runner.Replan = () => AiConsent.CoversExtraction(state.Current, factory) ? work.PlanAll() : 0;
 
         if (!state.Current.Enabled)
         {

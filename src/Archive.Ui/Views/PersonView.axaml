@@ -45,6 +45,9 @@
 
             <!-- Time sits bottom-right inside the bubble, where a chat app puts it. -->
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <!-- §7: where a stretch the model has not read yet begins. Only while AI is on. -->
+              <TextBlock Classes="faint" Text="not read by AI yet" IsVisible="{Binding IsUnreadByAi}"
+                         FontStyle="Italic" />
               <Button Content="context" FontSize="10" Padding="6,0" Background="Transparent"
                       IsVisible="{Binding CanExpand}" Command="{Binding ToggleContextCommand}" />
               <TextBlock Classes="faint" Text="{Binding Timestamp}" />

@@ -24,7 +24,8 @@ public sealed record PersonMessageRow(
     long SentAtUnix,
     string Plaintext,
     string? EntitiesJson,
-    long MediaCount)
+    long MediaCount,
+    string? SessionId = null)
 {
     public bool IsFromGroup => Origin == "group";
 
@@ -268,7 +269,8 @@ public sealed class PersonConversation(Database database)
                 reader.GetInt64(10),
                 reader.GetString(11),
                 reader.IsDBNull(12) ? null : reader.GetString(12),
-                reader.GetInt64(13)));
+                reader.GetInt64(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14)));
         }
 
         return messages;
@@ -368,7 +370,8 @@ public sealed class PersonConversation(Database database)
         SELECT m.id, m.uid, m.thread_id, t.title, {origin} AS origin,
                i.display_name, ifnull(p.is_owner, 0), m.kind, m.service_action,
                m.sent_at_utc, m.sent_at_unix, m.plaintext, m.entities_json,
-               (SELECT count(*) FROM message_media mm WHERE mm.message_id = m.id)
+               (SELECT count(*) FROM message_media mm WHERE mm.message_id = m.id),
+               m.session_id
         FROM message m
         LEFT JOIN thread t ON t.id = m.thread_id
         LEFT JOIN identity i ON i.id = m.sender_identity_id

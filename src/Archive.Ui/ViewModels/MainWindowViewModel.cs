@@ -56,6 +56,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
             };
         }
 
+        // A diary sentence is a place in the archive in the same way: its source opens where it
+        // was said.
+        if (_all.OfType<DiaryViewModel>().FirstOrDefault() is { } diary && person is not null)
+        {
+            diary.OpenInConversationRequested += async (_, target) =>
+            {
+                CurrentPage = person;
+                await person.RevealAsync(target.PersonId, target.MessageId).ConfigureAwait(true);
+            };
+        }
+
         // An import changes what every other page shows, so they are told rather than left to
         // notice. Without this the overview keeps reporting the counts from before the import.
         if (_all.OfType<ImportViewModel>().FirstOrDefault() is { } import)

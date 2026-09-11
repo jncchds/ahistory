@@ -70,11 +70,16 @@ public sealed class FactStore(Database database)
                    f.confidence, f.valid_from_utc, f.valid_to_utc, f.source,
                    (SELECT min(c.message_id) FROM fact_citation AS c
                     WHERE c.fact_id = f.id AND c.role = 'asserts'),
-                   (SELECT count(*) FROM fact_citation AS c WHERE c.fact_id = f.id)
+                   -- Everything folded into this fact counts as evidence for it: that is what a
+                   -- merge is for (A4), and the duplicates keep their citations on their own rows.
+                   (SELECT count(*) FROM fact_citation AS c
+                    WHERE c.fact_id = f.id
+                       OR c.fact_id IN (SELECT d.id FROM fact AS d WHERE d.merged_into = f.id))
             FROM fact AS f
             LEFT JOIN person_edge AS e ON e.id = f.subject_edge_id
             WHERE (f.subject_person_id = $person OR e.person_a_id = $person OR e.person_b_id = $person)
               AND f.superseded_by IS NULL
+              AND f.merged_into IS NULL
               AND f.retracted_utc IS NULL
               AND f.source <> 'user_deleted'
             ORDER BY f.source = 'extracted', f.confidence DESC, f.predicate;
@@ -171,7 +176,11 @@ public sealed class FactStore(Database database)
 
         using (var close = connection.CreateCommand())
         {
-            close.CommandText = "UPDATE fact SET superseded_by = $new WHERE id = $old;";
+            // What was folded into the old wording is evidence for the corrected one.
+            close.CommandText = """
+                UPDATE fact SET superseded_by = $new WHERE id = $old;
+                UPDATE fact SET merged_into = $new WHERE merged_into = $old;
+                """;
             close.Parameters.AddWithValue("$new", newId);
             close.Parameters.AddWithValue("$old", factId);
             close.ExecuteNonQuery();
@@ -189,6 +198,9 @@ public sealed class FactStore(Database database)
     /// A tombstone, not a delete. The row keeps its subject, predicate and value so that the next
     /// run which reads the same thing out of the same messages recognises it as rejected and
     /// records a citation against the tombstone instead of bringing the fact back.
+    ///
+    /// Everything folded into it goes with it. They were merged because they say the same thing,
+    /// and a removed fact whose restatements all reappeared would not have been removed.
     /// </remarks>
     public void Delete(string factId)
     {
@@ -200,7 +212,7 @@ public sealed class FactStore(Database database)
         command.CommandText = """
             UPDATE fact
             SET source = 'user_deleted', retracted_utc = coalesce(retracted_utc, $now)
-            WHERE id = $id;
+            WHERE id = $id OR merged_into = $id;
             """;
 
         command.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));

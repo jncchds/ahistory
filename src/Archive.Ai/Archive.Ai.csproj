@@ -5,6 +5,8 @@
   <ItemGroup>
     <ProjectReference Include="../Archive.Core/Archive.Core.csproj" />
     <ProjectReference Include="../Archive.Data/Archive.Data.csproj" />
+    <!-- Reading a photo or a voice message means opening the file; the direction is AI → storage, never back. -->
+    <ProjectReference Include="../Archive.Media/Archive.Media.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,10 +30,11 @@
   </ItemGroup>
 
   <!--
-    No model-runtime package, and there will not be one until A6. Every provider here is an
-    OpenAI-shaped HTTP endpoint spoken to with HttpClient and System.Text.Json, which is why the
-    LLM half of this app adds nothing to the download size and nothing to a build that never
-    enables it.
+    No model-runtime package, even with search by meaning and transcription built. Every provider
+    here is an OpenAI-shaped HTTP endpoint spoken to with HttpClient and System.Text.Json; vectors
+    are searched by brute force rather than through sqlite-vec, and speech goes to the endpoint's
+    /audio/transcriptions rather than to a bundled Whisper. So the AI half of this app adds nothing
+    native to the download, and nothing at all to a build that never enables it (decisions.md D32).
   -->
 
 </Project>

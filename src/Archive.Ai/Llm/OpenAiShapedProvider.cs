@@ -19,7 +19,7 @@ namespace Archive.Ai.Llm;
 /// endpoint always wins, so any of them can be pointed at a local server or a gateway.
 /// </para>
 /// </remarks>
-public abstract class OpenAiShapedProvider : ILlmProvider
+public abstract partial class OpenAiShapedProvider : ILlmProvider
 {
     /// <summary>
     /// One handler for the whole process.
@@ -116,9 +116,59 @@ public abstract class OpenAiShapedProvider : ILlmProvider
             };
         }
 
-        var body = await PostAsync("chat/completions", payload, cancellationToken).ConfigureAwait(false);
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
 
-        return ReadCompletion(body);
+        // Serialized once, so what is recorded is byte for byte what was sent — less the images.
+        var recordable = request.Messages.Any(m => m.Images is { Count: > 0 })
+            ? DataUrl().Replace(json, "\"data:(image not recorded)\"")
+            : json;
+
+        try
+        {
+            var body = await SendAsync(
+                () => Request(HttpMethod.Post, "chat/completions", json), cancellationToken).ConfigureAwait(false);
+
+            return ReadCompletion(body) with { WireRequest = recordable, WireResponse = body };
+        }
+        catch (LlmProviderException ex)
+        {
+            ex.RequestPayload = recordable;
+
+            throw;
+        }
+    }
+
+    public async Task<string> TranscribeAsync(
+        string model, byte[] audio, string fileName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(model);
+        ArgumentNullException.ThrowIfNull(audio);
+
+        // Rebuilt for every attempt: a request's content is consumed by sending it, and a retry
+        // that resent a spent stream would upload nothing and fail for a reason nobody could see.
+        var body = await SendAsync(() =>
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUrl, "audio/transcriptions"));
+            Authorize(request);
+
+            var file = new ByteArrayContent(audio);
+            file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+            request.Content = new MultipartFormDataContent
+            {
+                { new StringContent(model), "model" },
+                { new StringContent("json"), "response_format" },
+                { file, "file", fileName },
+            };
+
+            return request;
+        }, cancellationToken).ConfigureAwait(false);
+
+        using var document = JsonDocument.Parse(body);
+
+        return document.RootElement.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String
+            ? text.GetString() ?? string.Empty
+            : throw new LlmProviderException("The provider returned no transcript.", errorPayload: body);
     }
 
     public async Task<IReadOnlyList<float[]>> EmbedAsync(
@@ -187,6 +237,32 @@ public abstract class OpenAiShapedProvider : ILlmProvider
             },
             ["content"] = message.Content,
         };
+
+        // A turn with pictures is a list of parts rather than a string: the text first, then each
+        // image inline as a data URL, which is the shape every OpenAI-compatible server that can
+        // see at all accepts.
+        if (message.Images is { Count: > 0 } images)
+        {
+            var parts = new List<object>
+            {
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["type"] = "text",
+                    ["text"] = message.Content ?? string.Empty,
+                },
+            };
+
+            parts.AddRange(images.Select(image => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["type"] = "image_url",
+                ["image_url"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["url"] = $"data:{image.MimeType};base64,{Convert.ToBase64String(image.Bytes)}",
+                },
+            }));
+
+            wire["content"] = parts;
+        }
 
         if (message.ToolCallId is not null)
         {
@@ -298,10 +374,7 @@ public abstract class OpenAiShapedProvider : ILlmProvider
     {
         var request = new HttpRequestMessage(method, new Uri(BaseUrl, path));
 
-        if (!string.IsNullOrWhiteSpace(Settings.ApiKey))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Settings.ApiKey.Trim());
-        }
+        Authorize(request);
 
         if (body is not null)
         {
@@ -310,6 +383,18 @@ public abstract class OpenAiShapedProvider : ILlmProvider
 
         return request;
     }
+
+    private void Authorize(HttpRequestMessage request)
+    {
+        if (!string.IsNullOrWhiteSpace(Settings.ApiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Settings.ApiKey.Trim());
+        }
+    }
+
+    /// <summary>An inline image inside serialized JSON, quotes included.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex("\"data:[^\"]*\"")]
+    private static partial System.Text.RegularExpressions.Regex DataUrl();
 
     /// <summary>
     /// Sends, retrying transient failures with exponential backoff and jitter.

@@ -16,13 +16,26 @@
         <ProgressBar Minimum="0" Maximum="1" Value="{Binding CoverageFraction}"
                      Height="6" HorizontalAlignment="Stretch" />
         <TextBlock Classes="subtle" Text="{Binding QueueLine}" />
+        <TextBlock Classes="subtle" TextWrapping="Wrap" Text="{Binding BuiltLine}"
+                   IsVisible="{Binding BuiltLine, Converter={x:Static ObjectConverters.IsNotNull}}" />
       </StackPanel>
+
+      <!-- A run held by the budget looks paused. Saying why is the difference between a limit and a fault. -->
+      <Border IsVisible="{Binding BudgetLine, Converter={x:Static ObjectConverters.IsNotNull}}"
+              Background="{DynamicResource ElevatedBrush}" CornerRadius="4" Padding="12,8">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="⏸" IsVisible="{Binding IsOverBudget}" VerticalAlignment="Top" />
+          <TextBlock TextWrapping="Wrap" Text="{Binding BudgetLine}" />
+        </StackPanel>
+      </Border>
 
       <StackPanel Orientation="Horizontal" Spacing="12">
         <!-- Always there: the runner idles between jobs, so "running" is not "busy", and hiding
              this while it runs left no way to reach the question below. -->
         <Button Classes="accent" Content="Look for work" Command="{Binding StartCommand}" />
         <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding IsWorking}" />
+        <!-- Failed is visible, not final: some endpoints refuse a call now and then and take the same one later. -->
+        <Button Content="Retry failed" Command="{Binding RetryFailedCommand}" IsVisible="{Binding HasFailures}" />
         <ProgressBar IsIndeterminate="True" Width="120" VerticalAlignment="Center"
                      IsVisible="{Binding IsWorking}" />
       </StackPanel>

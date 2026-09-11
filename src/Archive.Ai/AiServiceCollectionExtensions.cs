@@ -1,6 +1,10 @@
+using Archive.Ai.Attachments;
+using Archive.Ai.Diary;
 using Archive.Ai.Extraction;
 using Archive.Ai.Jobs;
 using Archive.Ai.Llm;
+using Archive.Ai.Merging;
+using Archive.Ai.Search;
 using Archive.Ai.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,6 +38,23 @@ public static class AiServiceCollectionExtensions
         services.AddSingleton<AiForget>();
         services.AddSingleton<ExtractRunner>();
         services.AddSingleton<IAiJobHandler, ExtractJobHandler>();
+        services.AddSingleton<FactMerger>();
+        services.AddSingleton<IAiJobHandler, AdjudicateJobHandler>();
+        services.AddSingleton<DiaryInputs>();
+        services.AddSingleton<DiaryStore>();
+        services.AddSingleton<DiaryRunner>();
+        services.AddSingleton<DiaryPlanner>();
+        services.AddSingleton<IAiJobHandler, DiaryJobHandler>();
+        services.AddSingleton<IAiJobHandler, RollupJobHandler>();
+        services.AddSingleton<EmbeddingStore>();
+        services.AddSingleton<SessionText>();
+        services.AddSingleton<SemanticSearch>();
+        services.AddSingleton<HybridSearch>();
+        services.AddSingleton<IAiJobHandler, EmbedJobHandler>();
+        services.AddSingleton<MediaReader>();
+        services.AddSingleton<IAiJobHandler, OcrJobHandler>();
+        services.AddSingleton<IAiJobHandler, TranscribeJobHandler>();
+        services.AddSingleton<AiBudget>();
         services.AddSingleton<AiRunner>();
         services.AddSingleton<AiWork>();
 

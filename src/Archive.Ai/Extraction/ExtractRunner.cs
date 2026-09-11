@@ -45,15 +45,6 @@ public sealed class ExtractRunner(
     FactWriter writer,
     ILogger<ExtractRunner>? logger = null)
 {
-    /// <summary>
-    /// How many times the model may be told it got a call wrong.
-    /// </summary>
-    /// <remarks>
-    /// Bounded because a model that cannot satisfy the validator will not start being able to on
-    /// the ninth attempt, and every round is a paid call over the same transcript.
-    /// </remarks>
-    private const int CorrectionRounds = 2;
-
     private readonly AiClient _client = client ?? throw new ArgumentNullException(nameof(client));
 
     private readonly ExtractionWindows _windows = windows ?? throw new ArgumentNullException(nameof(windows));
@@ -79,74 +70,18 @@ public sealed class ExtractRunner(
 
         var staged = new ToolDispatcher(window);
 
-        var conversation = new List<LlmChatMessage>
-        {
-            LlmChatMessage.System(PromptCatalog.TextOf(PromptCatalog.ExtractSession)),
-            LlmChatMessage.User(Context(window, settings.OutputLanguage)),
-        };
-
-        var calledAnything = false;
-
-        // What the endpoint says it ran, when it says anything at all. Most do not, and "unknown"
-        // is the honest record: a made-up version would make "re-run what the old model did" a
-        // query that cannot tell two models apart.
-        var modelVersion = "unknown";
-
-        for (var round = 0; round <= CorrectionRounds; round++)
-        {
-            var completion = await _client.ChatAsync(
-                settings,
-                new LlmChatRequest
-                {
-                    Model = model,
-                    Messages = conversation,
-                    Tools = FactTools.All,
-                    ToolChoice = LlmToolChoice.Auto,
-                    Temperature = settings.Temperature,
-                    MaxTokens = settings.MaxTokens,
-                },
-                AiPurpose.Extract,
-                AiSubject.Session(sessionId),
-                cancellationToken).ConfigureAwait(false);
-
-            if (!string.IsNullOrWhiteSpace(completion.SystemFingerprint))
-            {
-                modelVersion = completion.SystemFingerprint;
-            }
-
-            if (completion.ToolCalls.Count == 0)
-            {
-                break;
-            }
-
-            calledAnything = true;
-            conversation.Add(LlmChatMessage.Assistant(completion.Content, completion.ToolCalls));
-
-            var refused = 0;
-
-            foreach (var call in completion.ToolCalls)
-            {
-                var reply = staged.Dispatch(call.Name, call.ArgumentsJson);
-
-                if (!reply.Accepted)
-                {
-                    refused++;
-                }
-
-                conversation.Add(LlmChatMessage.ToolResult(call.Id, reply.Message));
-            }
-
-            // Everything landed, or the model has said there is nothing here. Either way it has
-            // finished, and another round would only invite it to invent something.
-            if (refused == 0 || staged.NothingToRecord)
-            {
-                break;
-            }
-
-            conversation.Add(LlmChatMessage.User(
-                "Some of those calls were refused, with the reason after each. Send corrected "
-                + "calls for those, and nothing for the ones that were accepted."));
-        }
+        var (calledAnything, modelVersion) = await ToolConversation.RunAsync(
+            _client,
+            settings,
+            model,
+            PromptCatalog.TextOf(PromptCatalog.ExtractSession),
+            Context(window, settings.OutputLanguage),
+            FactTools.All,
+            staged.Dispatch,
+            () => staged.NothingToRecord,
+            AiPurpose.Extract,
+            AiSubject.Session(sessionId),
+            cancellationToken).ConfigureAwait(false);
 
         if (!calledAnything)
         {

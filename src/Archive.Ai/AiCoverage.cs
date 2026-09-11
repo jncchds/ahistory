@@ -147,6 +147,54 @@ public sealed class AiCoverage(Database database)
         return reader.Read() ? Read(reader) : CoverageSummary.Empty;
     }
 
+    /// <summary>
+    /// Which of these sessions are worth reading and have not been read at the current prompt.
+    /// </summary>
+    /// <remarks>
+    /// §7: an empty facts panel for March 2019 means either "not read yet" or "nothing worth
+    /// recording", and the conversation is where the difference shows — a quiet mark on a stretch
+    /// the model has not reached. Conversations left out are not marked: they are not waiting for
+    /// anything, and the panel already says so.
+    /// </remarks>
+    public IReadOnlySet<string> Unread(IEnumerable<string> sessionIds)
+    {
+        ArgumentNullException.ThrowIfNull(sessionIds);
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT s.id
+            FROM session AS s
+            JOIN thread AS t ON t.id = s.thread_id
+            WHERE s.id IN (SELECT value FROM json_each($ids))
+              AND s.is_substantive = 1
+              AND s.segmenter_version = $version
+              AND t.ai_excluded = 0
+              AND NOT EXISTS (SELECT 1 FROM save_meta WHERE ai_opt_out = 1)
+              AND NOT EXISTS (
+                  SELECT 1 FROM derived_artifact AS d
+                  WHERE d.source_session_id = s.id
+                    AND d.kind = 'session_extract'
+                    AND d.prompt_version = $prompt);
+            """;
+
+        command.Parameters.AddWithValue("$ids", System.Text.Json.JsonSerializer.Serialize(sessionIds.Distinct().ToArray()));
+        command.Parameters.AddWithValue("$version", SessionSegmenter.Version);
+        command.Parameters.AddWithValue("$prompt", PromptCatalog.VersionOf(PromptCatalog.ExtractSession));
+
+        var unread = new HashSet<string>(StringComparer.Ordinal);
+
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            unread.Add(reader.GetString(0));
+        }
+
+        return unread;
+    }
+
     private static CoverageSummary Read(Microsoft.Data.Sqlite.SqliteDataReader reader) => new(
         Threads: reader.GetInt64(0),
         ThreadsSegmented: reader.GetInt64(1),

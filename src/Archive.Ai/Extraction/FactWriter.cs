@@ -116,7 +116,51 @@ public sealed class FactWriter(Database database)
         command.Parameters.AddWithValue("$session", sessionId);
         command.Parameters.AddWithValue("$artifact", artifactId);
 
-        return command.ExecuteNonQuery();
+        var retracted = command.ExecuteNonQuery();
+
+        if (retracted > 0)
+        {
+            ReleaseFromRetracted(connection);
+        }
+
+        return retracted;
+    }
+
+    /// <summary>
+    /// Lets go of whatever was folded into, or closed by, a fact the model no longer stands behind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A merge is only as good as the fact it merged into. When a re-run retracts that fact, a
+    /// duplicate folded into it would otherwise stay hidden behind a fact nobody believes, with its
+    /// own evidence invisible — so it comes back, live, and the next merge pass looks at it afresh.
+    /// </para>
+    /// <para>
+    /// The same for a value closed as expired by one that has since been retracted: until something
+    /// replaces it again, it is the latest thing known. Its end date stays, because a value that
+    /// was said to have ended is not made current by the retraction of what replaced it.
+    /// </para>
+    /// <para>
+    /// Only the model's retractions. A fact the user deleted takes what was folded into it with it
+    /// — see <see cref="FactStore.Delete"/>.
+    /// </para>
+    /// </remarks>
+    internal static void ReleaseFromRetracted(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            UPDATE fact SET merged_into = NULL
+            WHERE merged_into IN (
+                SELECT id FROM fact WHERE retracted_utc IS NOT NULL AND source = 'extracted');
+
+            UPDATE fact SET superseded_by = NULL
+            WHERE retracted_utc IS NULL
+              AND superseded_by IN (
+                  SELECT id FROM fact WHERE retracted_utc IS NOT NULL AND source = 'extracted');
+            """;
+
+        command.ExecuteNonQuery();
     }
 
     private static void InsertArtifact(

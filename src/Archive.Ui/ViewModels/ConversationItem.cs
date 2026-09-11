@@ -109,6 +109,12 @@ public sealed partial class MessageItem(PersonMessageRow row, Func<long, Task<IR
     [ObservableProperty]
     private bool _isRevealed;
 
+    /// <summary>
+    /// True on the first message of a stretch a model has not read yet, while AI is on (§7).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isUnreadByAi;
+
     [ObservableProperty]
     private bool _isExpanded;
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Archive.Ai;
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,9 +22,44 @@ namespace Archive.Ui.ViewModels;
 /// identical left-aligned bubbles is a transcript, not a conversation.
 /// </para>
 /// </remarks>
-public sealed partial class ThreadsViewModel(ArchiveQueries queries, ILogger<ThreadsViewModel>? logger = null)
+public sealed partial class ThreadsViewModel(
+    ArchiveQueries queries,
+    ILogger<ThreadsViewModel>? logger = null,
+    AiExclusions? exclusions = null,
+    AiState? state = null)
     : ViewModelBase(logger)
 {
+    /// <summary>Whether this conversation can be left out of AI reading from here — only while AI is on.</summary>
+    [ObservableProperty]
+    private bool _canExcludeThread;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ThreadExclusionLabel))]
+    private bool _isThreadExcluded;
+
+    public string ThreadExclusionLabel => IsThreadExcluded ? "Include in AI reading" : "Leave out of AI reading";
+
+    /// <summary>
+    /// Leaves this conversation out of everything a model reads, or lets it back in.
+    /// </summary>
+    /// <remarks>
+    /// For a room rather than a person: a group that is nobody's business, or one direct thread
+    /// with someone whose others are fine. With a hosted endpoint, left out also means never sent.
+    /// </remarks>
+    [RelayCommand]
+    private Task ToggleThreadExclusion() => RunAsync(async () =>
+    {
+        if (exclusions is null || SelectedThread is not { } thread)
+        {
+            return;
+        }
+
+        var excluded = !IsThreadExcluded;
+
+        await Task.Run(() => exclusions.SetThread(thread.Id, excluded)).ConfigureAwait(true);
+
+        IsThreadExcluded = excluded;
+    });
     /// <summary>Page size. Small enough that the first screen is instant on a large thread.</summary>
     private const int PageSize = 100;
 
@@ -119,6 +155,11 @@ public sealed partial class ThreadsViewModel(ArchiveQueries queries, ILogger<Thr
         {
             Participants.Add(participant);
         }
+
+        // Only offered while AI is on: switched off, the window carries no trace of it (P1).
+        CanExcludeThread = exclusions is not null && state?.Current.Enabled == true;
+        IsThreadExcluded = CanExcludeThread
+            && await Task.Run(() => exclusions!.IsThreadExcluded(thread.Id)).ConfigureAwait(true);
 
         await AppendPageAsync().ConfigureAwait(true);
     });

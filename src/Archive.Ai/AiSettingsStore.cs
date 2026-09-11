@@ -126,7 +126,17 @@ public sealed class AiSettingsStore
         Set(nameof(AiSettings.MainModel), value => settings.MainModel = value);
         Set(nameof(AiSettings.UtilityModel), value => settings.UtilityModel = value);
         Set(nameof(AiSettings.EmbeddingModel), value => settings.EmbeddingModel = value);
+        Set(nameof(AiSettings.VisionModel), value => settings.VisionModel = value);
+        Set(nameof(AiSettings.TranscriptionModel), value => settings.TranscriptionModel = value);
         Set(nameof(AiSettings.OutputLanguage), value => settings.OutputLanguage = value);
+
+        Set(nameof(AiSettings.DailyTokenBudget), value =>
+        {
+            if (long.TryParse(value, out var parsed))
+            {
+                settings.DailyTokenBudget = parsed;
+            }
+        });
 
         Set(nameof(AiSettings.Provider), value =>
         {

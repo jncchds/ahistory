@@ -508,10 +508,15 @@ than reporting it afterwards), the retry and timeout settings. Also from configu
 they are policy and not code: batch size and the debounce interval.
 
 As built: `MaxParallelCalls` is honoured — model calls run that many at once, local work one at a
-time, and the setting is re-read on every claim. `TokenBudget`, `BatchSize` and
-`RollupDebounce` exist in the settings but **are not enforced yet**; none is on the settings page,
-so nothing claims otherwise. `TokenBudget` is the one that matters before anyone points this at a
-paid endpoint.
+time, and the setting is re-read on every claim. The budget is **`DailyTokenBudget`**, a cap per
+rolling 24 hours rather than per run: there is no run — the runner starts with every launch — and a
+cap that reset on each one would protect nothing on a paid endpoint. It is measured from
+`ai_interaction`, so it holds across restarts (pruning never drops a row from the last day), and it
+is enforced the way consent is: once reached, every kind of work that calls a model is withheld at
+claim time, local work carries on, and the work resumes by itself as the window moves. Calls in
+flight finish, so it can be overshot by one call per parallel slot. It is on the settings page, and
+the activity page says when it is holding work. `BatchSize` became a constant (sixteen sessions per
+embedding call) and `RollupDebounce` became settledness rather than a timer — see §15.
 
 **Robustness.** Per-job exponential backoff, an attempts cap, then `needs_review` (§7). Jobs left
 `running` by a crash are reclaimed at startup by lease age. The runner writes in small batches with
@@ -566,8 +571,12 @@ Start button hidden while it "runs" left no way to give the answer.
 never queued or read, and their lines are dropped from any group transcript before it is sent, so
 nothing they wrote leaves the machine; letting them back in re-queues what was skipped. The first
 version only took them off the roster, which would still have sent their direct conversations —
-caught while building the button. Thread exclusion and the per-save opt-out are honoured but have
-no control yet, and the third-party default is not built.
+caught while building the button. Leaving out a whole conversation is a button in the Threads
+header, and the per-save opt-out is on the AI page; the latter is written into the save, so it holds
+on any machine. In a third-party save (`owner_is_self = 0`) reflected evidence is refused at the
+tool call — the model is told why while it can still correct itself — so only what people said
+about themselves is recorded. Every exclusion is applied again by each stage that sends text:
+extraction, merging, the diary, embeddings, and media.
 
 ### 11.4 Forget everything
 
@@ -586,8 +595,9 @@ Deletion runs in one transaction.
 
 **As built:** forgetting everything is on the AI page — there even with AI switched off, which is
 when someone most wants it — with the counts in front of the person and the word typed. Settings,
-consent and exclusions are kept: they are the user's choices, not the model's output. Of the
-narrower forms, only clearing statistics exists.
+consent and exclusions are kept: they are the user's choices, not the model's output. It covers
+diary texts, merge verdicts, vectors and media texts too. Of the narrower forms, clearing statistics
+and clearing the vectors of unused models exist.
 
 ---
 
@@ -658,15 +668,97 @@ Each step ends with something demonstrable (P4), and each is harmless if the nex
   endpoint the user has said yes to. What is still open: a real extraction run end to end, which the
   local test endpoint could not do (§5.0b); and the panel has been checked by its view-model tests
   but not yet looked at.
-- **A4 — Merge.** Candidate retrieval by normalized key first, adjudication for the ambiguous band,
-  three outcomes. An over-merge is a confident lie with twelve citations; an under-merge is merely
-  ugly. Bias accordingly.
-- **A5 — Rollups and diary.** Session → month → year → profile, cached on the fact set visible to
-  the window and not only on its messages, revisions shown as revisions.
-- **A6 — Embeddings and hybrid search.** §9 and §10, and the first native package — the first time
-  the narrowed layout rule has anything to catch.
-- **A7 — Transcription and OCR.** Independent of everything above and orderable anywhere;
-  Whisper.net, a derived artifact per media, provenance flagged on the search row.
+- **A4 — Merge. Done.** Candidate retrieval by normalized key first, adjudication for the ambiguous
+  band, three outcomes. An over-merge is a confident lie with twelve citations; an under-merge is
+  merely ugly. Bias accordingly.
+- **A5 — Rollups and diary. Done.** Month → year → profile, cached on the fact set visible to the
+  window and not only on its messages, revisions shown as revisions.
+- **A6 — Embeddings and hybrid search. Done** — without the native package it was expected to bring
+  (decisions.md D32).
+- **A7 — Transcription and OCR. Done**, through the endpoint rather than Whisper.net (D32).
 
-A6 and A7 are also where "the archive runs with no AI component" stops being free and becomes a
-packaging question — both are native, per-RID, and land in a build that is already 115 MB.
+The packaging question A6 and A7 were expected to raise did not arise: neither needed anything
+native, so a build that never enables AI still ships nothing it does not use. All four phases share
+one migration, `009_ai_complete.sql`, because they were built together (§13's rule is against
+pinning a guess, and none of this is one any more).
+
+---
+
+## 15. As built: A4–A7
+
+**The shared loop.** Every write path — extraction, merging, the diary — runs through one tool
+conversation (`ToolConversation`): material in, tool calls out, each answered, refused calls
+corrected for at most two rounds, nothing written until it ends. A correction round often resends
+calls that were already accepted; a fact identical in key *and* citations to one staged in the same
+run is acknowledged and not added twice. Prompt recording now stores the request exactly as it went
+on the wire, tool schemas included, with any image replaced by a marker.
+
+**Merging (A4).** `FactMerger` groups a person's live facts by subject and predicate. Values equal
+once case, punctuation and articles are set aside fold with no model call. What remains goes to the
+model in numbered pairs — every pair in a group of six or fewer, only near-matches in larger ones —
+and one `judge_pair` call per pair answers *same*, *changed* or *different*. "Not sure" is
+*different*, by instruction. A fold is a pointer (`fact.merged_into`), not a rewrite: the duplicate
+keeps its own citations, the panel counts them for the fact it was folded into, and retracting that
+fact lets the duplicate go live again. *Changed* closes the older value in event time. A user's
+correction is never folded into anything and never closed by a model. Verdicts are remembered
+(`fact_pair_verdict`) so a pair is asked about once. One call per job; the rest is a new plan with a
+new hash and is queued by the next pass.
+
+**The diary (A5).** Three texts, all written as one cited sentence per `write_sentence` call:
+
+- a **month** with one person, from the facts their messages that month asserted or corroborated —
+  plus, for a contact, budgeted excerpts of that month's direct conversations; the owner gets facts
+  only, since their month is every conversation they had. The months of silence before it are
+  stated in the material, not left to be noticed. This is the plan's `diary.window` and
+  `rollup.month` in one: two calls summarising the same month would be paying twice by design;
+- a **year**, from its month entries only, citing what they cite;
+- a **portrait**, from the years, the latest months and the top facts.
+
+A month is keyed on its facts and the membership of its conversations, never on when it was asked,
+so an import touching March 2019 rewrites March 2019 and nothing else. It is written only once it is
+**settled** — no conversation in it still waiting to be read, no merge for the person pending — which
+replaces the planned debounce timer: without it a first pass would rewrite an entry every time
+another of its sessions landed. A year waits for its months, the portrait for its years. A rewrite is
+a new row; the page shows the newest, says *revised*, and keeps the earlier text one click away. An
+entry in a language other than the one now chosen says so. The Diary page is in the rail only while
+AI is on, and every sentence opens the message it rests on.
+
+**Search by meaning (A6).** Substantive sessions are embedded — through the same window extraction
+uses, so everything left out is left out here too — one job per thread, sixteen sessions per call,
+as normalized float32 BLOBs keyed on the session's membership and a text version. Nomic and E5
+models get their task prefixes. There is no `sqlite-vec` (D32): search is a dot product over the
+vectors, held in memory per model. The **active** model is the configured one once it covers 98%
+of what it could, and until then whichever covers more — so changing the model never takes search
+away, and the settings page says so before the change is saved. Hybrid ranking is reciprocal rank
+over the keyword list and the meaning list, a hit found only by meaning is shown as its session's
+best-matching message, and every result says `keyword`, `meaning` or `both`. A meaning hit has to
+be within 80% of the best match's similarity: nearest neighbours always exist, however far away.
+The toggle appears only when semantic search can run, and defaults on past half coverage.
+
+**Media (A7).** A photo up to 5 MB is sent to the vision model with the `ocr.image` prompt; a voice
+or round video message to `/audio/transcriptions`. Each writes a derived artifact on the file and one
+search row with provenance `ocr` or `transcript`, anchored to the earliest message that may be read;
+keyword search now finds those rows through that message. A newer reading replaces the older one in
+search and sits beside it in the artifacts. Neither is on until its model is named.
+
+**The marker.** In a conversation, the first message of a stretch the model has not read yet carries
+a quiet "not read by AI yet" — §7's difference between an empty panel and an unread month — and
+nothing at all with AI off.
+
+**Seen working, on synthetic data.** The whole pipeline ran end to end against LM Studio
+(`gemma-4-31b-qat`, `nomic-embed-text-v1.5`) over a 300-message synthetic export in under ten
+minutes: nine sessions read, restatements folded, nine month entries, a year and two portraits, every
+sentence cited and the silences stated ("it had been twenty-nine months since the last message").
+Four diary months failed with HTTP 400 while two calls ran side by side, and wrote fine when run
+again one at a time — the error body is not kept (P6), so the cause is a guess, but it is why failed
+work can now be put back with **Retry failed** on the activity page rather than staying failed for
+good.
+
+**Not done.** Transcripts are searchable but are not yet fed into extraction, so a fact said only in
+a voice note is not recorded; and the conversation view shows a voice message as an attachment, not
+with its transcript. OCR and transcription have been checked only against a stand-in endpoint:
+the synthetic export has no screenshots, and LM Studio does not serve `/audio/transcriptions`.
+Search by meaning cannot be judged on synthetic data at all — every session is the same phrase soup,
+so every query finds the same sessions, and the 80% relative floor does nothing when scores cluster.
+A real archive is what decides that floor, the diary prompts (one entry wrote "Robin and I" where it
+should have said "you"), and the filter thresholds before them.

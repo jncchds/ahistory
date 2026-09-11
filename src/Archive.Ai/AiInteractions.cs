@@ -12,6 +12,8 @@ public enum AiPurpose
     Rollup,
     Diary,
     Embed,
+    Transcribe,
+    Ocr,
     ListModels,
     Test,
 }
@@ -212,6 +214,26 @@ public sealed class AiInteractions(Database database)
         return kinds;
     }
 
+    /// <summary>
+    /// Tokens spent since a moment — what the daily budget is measured against.
+    /// </summary>
+    /// <remarks>
+    /// Timestamps are all written in the same round-trip format, so comparing them as text orders
+    /// them correctly, and the comparison runs on the time index.
+    /// </remarks>
+    public long TokensSince(DateTime sinceUtc)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText =
+            "SELECT coalesce(sum(total_tokens), 0) FROM ai_interaction WHERE created_utc >= $since;";
+
+        command.Parameters.AddWithValue("$since", sinceUtc.ToString("O", CultureInfo.InvariantCulture));
+
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     /// <summary>Deletes every recorded call. The statistics, and nothing else.</summary>
     public void Clear()
     {
@@ -226,12 +248,17 @@ public sealed class AiInteractions(Database database)
     {
         using var command = connection.CreateCommand();
 
+        // Never a row from the last day, whatever the count: those are what the daily budget adds
+        // up, and pruning one would let a fast hosted endpoint spend past the cap unnoticed.
         command.CommandText = """
             DELETE FROM ai_interaction
-            WHERE id <= (SELECT max(id) - $keep FROM ai_interaction);
+            WHERE id <= (SELECT max(id) - $keep FROM ai_interaction)
+              AND created_utc < $dayAgo;
             """;
 
         command.Parameters.AddWithValue("$keep", Keep);
+        command.Parameters.AddWithValue(
+            "$dayAgo", (DateTime.UtcNow - TimeSpan.FromDays(1)).ToString("O", CultureInfo.InvariantCulture));
         command.ExecuteNonQuery();
     }
 
@@ -250,6 +277,8 @@ public sealed class AiInteractions(Database database)
         AiPurpose.Rollup => "rollup",
         AiPurpose.Diary => "diary",
         AiPurpose.Embed => "embed",
+        AiPurpose.Transcribe => "transcribe",
+        AiPurpose.Ocr => "ocr",
         AiPurpose.ListModels => "list_models",
         _ => "test",
     };
@@ -261,6 +290,8 @@ public sealed class AiInteractions(Database database)
         "rollup" => AiPurpose.Rollup,
         "diary" => AiPurpose.Diary,
         "embed" => AiPurpose.Embed,
+        "transcribe" => AiPurpose.Transcribe,
+        "ocr" => AiPurpose.Ocr,
         "list_models" => AiPurpose.ListModels,
         _ => AiPurpose.Test,
     };

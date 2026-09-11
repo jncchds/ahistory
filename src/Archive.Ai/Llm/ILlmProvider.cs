@@ -12,9 +12,13 @@ public interface ILlmProvider
 
     Task<LlmCompletion> ChatAsync(LlmChatRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Text to vectors. Unused until A6.</summary>
+    /// <summary>Text to vectors, one per text, in the order given.</summary>
     Task<IReadOnlyList<float[]>> EmbedAsync(
         string model, IReadOnlyList<string> texts, CancellationToken cancellationToken = default);
+
+    /// <summary>Speech to text, through <c>/audio/transcriptions</c>.</summary>
+    Task<string> TranscribeAsync(
+        string model, byte[] audio, string fileName, CancellationToken cancellationToken = default);
 
     /// <summary>The catalogue behind the Load models button. Suggestions, never a validator.</summary>
     Task<IReadOnlyList<LlmModelInfo>> ListModelsAsync(CancellationToken cancellationToken = default);
@@ -65,4 +69,10 @@ public sealed class LlmProviderException : Exception
     /// app. It is never logged (P6) — an error body can quote the request.
     /// </remarks>
     public string? ErrorPayload { get; }
+
+    /// <summary>
+    /// The request that failed, as it went on the wire — for prompt recording, which is where a
+    /// failing prompt most needs to be seen.
+    /// </summary>
+    public string? RequestPayload { get; internal set; }
 }

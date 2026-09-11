@@ -894,3 +894,29 @@ Two consequences worth writing down:
 `No_storage_project_takes_an_ai_dependency`, joined by `No_storage_project_references_the_ai_project`
 — which the package rule would not catch, because talking to an OpenAI-shaped endpoint needs no
 package at all.
+
+## D32 — No native model runtime: vectors by brute force, speech and images through the endpoint
+
+The spec names `sqlite-vec` for semantic search (§5) and Whisper.net for transcription (§3), and
+D31 was written expecting both. Neither shipped.
+
+**Vectors.** The canonical store was always going to be plain BLOBs with their own dimension
+(ai-plan.md §9.1), with a `vec0` table as a disposable index on top. Built that way, the index turns
+out to be optional: the sessions worth embedding in one person's archive number in the tens of
+thousands at most, and a dot product over that many unit vectors held in memory is a few
+milliseconds. So search by meaning is brute force over the BLOBs, cached per model and invalidated
+by count. `sqlite-vec` stays the answer if an archive ever outgrows that — at which point the
+`Database` extension hook from D31 is where it goes, and still only from `Archive.Ai`.
+
+**Speech and images.** Whisper.net means a native library per platform plus a model file of
+hundreds of megabytes that someone has to download, place and update; classic OCR means another.
+Both are also worse than what the configured endpoint can already do — a vision model reads a
+screenshot better than Tesseract does, and `/audio/transcriptions` is served by OpenAI and by
+several local servers. So reading media goes through the same endpoint as everything else, under
+the same consent, the same budget and the same statistics, and each is off until its model is named.
+
+What this costs: transcription needs an endpoint that serves it, and LM Studio — the local server
+this was developed against — does not. A user who wants fully local transcription today points the
+transcription model at a separate local speech server, or goes without. What it buys: the AI half of
+the app adds nothing native to the download, `No_storage_project_takes_an_ai_dependency` still has
+nothing to catch, and a build that never enables AI is byte for byte what it would be without it.

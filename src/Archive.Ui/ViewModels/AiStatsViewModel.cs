@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Archive.Ai;
+using Archive.Ai.Diary;
 using Archive.Ai.Jobs;
 using Archive.Ai.Llm;
+using Archive.Ai.Search;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,6 +57,9 @@ public sealed partial class AiStatsViewModel : ViewModelBase
     private readonly AiRunner _runner;
     private readonly AiWork _work;
     private readonly ILlmProviderFactory _factory;
+    private readonly AiBudget? _budget;
+    private readonly DiaryStore? _diary;
+    private readonly EmbeddingStore? _embeddings;
 
     private DateTime _lastRefresh = DateTime.MinValue;
 
@@ -75,12 +80,18 @@ public sealed partial class AiStatsViewModel : ViewModelBase
         AiRunner runner,
         AiWork work,
         ILlmProviderFactory factory,
-        ILogger<AiStatsViewModel>? logger = null)
+        ILogger<AiStatsViewModel>? logger = null,
+        AiBudget? budget = null,
+        DiaryStore? diary = null,
+        EmbeddingStore? embeddings = null)
         : base(logger)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         _state = state;
+        _budget = budget;
+        _diary = diary;
+        _embeddings = embeddings;
         _interactions = interactions ?? throw new ArgumentNullException(nameof(interactions));
         _coverage = coverage ?? throw new ArgumentNullException(nameof(coverage));
         _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
@@ -140,6 +151,22 @@ public sealed partial class AiStatsViewModel : ViewModelBase
     /// <summary>What the queue holds — including, deliberately, what failed.</summary>
     [ObservableProperty]
     private string _queueLine = string.Empty;
+
+    /// <summary>True when some work ran out of attempts and can be tried again.</summary>
+    [ObservableProperty]
+    private bool _hasFailures;
+
+    /// <summary>The daily cap and how much of it is gone, when there is one.</summary>
+    [ObservableProperty]
+    private string? _budgetLine;
+
+    /// <summary>True while the cap is holding model work — shown, because a paused-looking run needs a reason.</summary>
+    [ObservableProperty]
+    private bool _isOverBudget;
+
+    /// <summary>What has been built on top of the reading: the diary, the index, text from files.</summary>
+    [ObservableProperty]
+    private string? _builtLine;
 
     [ObservableProperty]
     private bool _isWorking;
@@ -203,14 +230,33 @@ public sealed partial class AiStatsViewModel : ViewModelBase
               + (counts.Failed == 0 ? "." : $", {Number(counts.Failed)} failed.");
 
         IsWorking = _runner.IsRunning;
+        HasFailures = counts.Failed > 0;
+
+        var settings = _state.Current;
+
+        if (_budget is not null && settings.DailyTokenBudget > 0)
+        {
+            var spent = await Task.Run(_budget.Spent).ConfigureAwait(true);
+
+            IsOverBudget = spent >= settings.DailyTokenBudget;
+            BudgetLine = $"{Number(spent)} of {Number(settings.DailyTokenBudget)} tokens used in the last 24 hours"
+                + (IsOverBudget
+                    ? " — the budget is reached. Model work waits, and carries on by itself as the day moves on."
+                    : ".");
+        }
+        else
+        {
+            IsOverBudget = false;
+            BudgetLine = null;
+        }
+
+        BuiltLine = await Task.Run(() => Built(settings)).ConfigureAwait(true);
 
         // Asked where it can be answered, without having to know to press anything. Work already
         // queued — by an import, or carried in a save — waits for a yes rather than being sent,
         // and this page is where the yes is given.
         if (!NeedsConfirmation && !_declined)
         {
-            var settings = _state.Current;
-
             if (settings.IsUsable && !AiConsent.CoversExtraction(settings, _factory))
             {
                 var pending = await Task.Run(_work.PendingExtraction).ConfigureAwait(true);
@@ -250,9 +296,9 @@ public sealed partial class AiStatsViewModel : ViewModelBase
             ConfirmationText = Describe(settings, pending);
             NeedsConfirmation = true;
         }
-        else if (settings.IsUsable)
+        else if (AiConsent.CoversExtraction(settings, _factory))
         {
-            await Task.Run(_work.PlanExtraction).ConfigureAwait(true);
+            await Task.Run(_work.PlanAll).ConfigureAwait(true);
         }
 
         _runner.Start();
@@ -271,7 +317,7 @@ public sealed partial class AiStatsViewModel : ViewModelBase
 
         NeedsConfirmation = false;
 
-        await Task.Run(_work.PlanExtraction).ConfigureAwait(true);
+        await Task.Run(_work.PlanAll).ConfigureAwait(true);
 
         _runner.Start();
 
@@ -285,6 +331,18 @@ public sealed partial class AiStatsViewModel : ViewModelBase
         NeedsConfirmation = false;
         _declined = true;
     }
+
+    /// <summary>Puts what failed back in the queue, and starts on it.</summary>
+    [RelayCommand]
+    private Task RetryFailed() => RunAsync(async () =>
+    {
+        await Task.Run(_jobs.RetryFailed).ConfigureAwait(true);
+
+        _runner.Start();
+        _runner.Poke();
+
+        await RefreshAsync().ConfigureAwait(true);
+    });
 
     [RelayCommand]
     private Task Pause() => RunAsync(async () =>
@@ -322,8 +380,51 @@ public sealed partial class AiStatsViewModel : ViewModelBase
             ? "Everything stays on this machine."
             : $"Their text will be sent to {new Uri(AiConsent.Destination(settings, _factory)).Host}.";
 
-        return $"This will read {Number(sessions)} conversation(s) with {model} — {cost}. {destination} "
+        // Everything else the same yes covers, named, because each of these also sends something.
+        var also = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(settings.EmbeddingModel))
+        {
+            also.Add($"index them for search by meaning with {settings.EmbeddingModel.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.VisionModel))
+        {
+            also.Add("send photos to be read for text");
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.TranscriptionModel))
+        {
+            also.Add("send voice messages to be transcribed");
+        }
+
+        var extra = also.Count == 0 ? string.Empty : $" It will also {string.Join(", ", also)}.";
+
+        return $"This will read {Number(sessions)} conversation(s) with {model} — {cost}.{extra} {destination} "
             + "You will not be asked again for this endpoint; new conversations are read as they arrive.";
+    }
+
+    /// <summary>What has been built on the reading: diary texts, vectors, and text from files.</summary>
+    private string? Built(AiSettings settings)
+    {
+        var parts = new List<string>();
+
+        if (_diary is not null && _diary.Count() is > 0 and var texts)
+        {
+            parts.Add($"{Number(texts)} diary text(s) written");
+        }
+
+        if (_embeddings is not null && _embeddings.Active(settings.EmbeddingModel) is { } model)
+        {
+            var coverage = _embeddings.Coverage(model);
+
+            parts.Add($"{Number(coverage.Embedded)} of {Number(coverage.Eligible)} conversation(s) indexed for search by meaning with {model}"
+                + (!string.IsNullOrWhiteSpace(settings.EmbeddingModel) && model != settings.EmbeddingModel.Trim()
+                    ? $" — {settings.EmbeddingModel.Trim()} is being built and takes over when it is complete"
+                    : string.Empty));
+        }
+
+        return parts.Count == 0 ? null : string.Join("; ", parts) + ".";
     }
 
     private static string Number(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
@@ -335,6 +436,8 @@ public sealed partial class AiStatsViewModel : ViewModelBase
         AiPurpose.Rollup => "Rollups",
         AiPurpose.Diary => "Diary",
         AiPurpose.Embed => "Embeddings",
+        AiPurpose.Transcribe => "Transcription",
+        AiPurpose.Ocr => "Text in images",
         AiPurpose.ListModels => "Model list",
         _ => "Connection test",
     };

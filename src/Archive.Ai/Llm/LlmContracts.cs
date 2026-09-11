@@ -38,11 +38,17 @@ public sealed record LlmChatMessage
     /// <summary>Set on a tool turn: which call this answers.</summary>
     public string? ToolCallId { get; init; }
 
+    /// <summary>Pictures sent with a user turn, for a model that can see.</summary>
+    public IReadOnlyList<LlmImage>? Images { get; init; }
+
     public static LlmChatMessage System(string content) =>
         new() { Role = LlmRole.System, Content = content };
 
     public static LlmChatMessage User(string content) =>
         new() { Role = LlmRole.User, Content = content };
+
+    public static LlmChatMessage UserWithImages(string content, IReadOnlyList<LlmImage> images) =>
+        new() { Role = LlmRole.User, Content = content, Images = images };
 
     public static LlmChatMessage Assistant(string? content, IReadOnlyList<LlmToolCall>? toolCalls = null) =>
         new() { Role = LlmRole.Assistant, Content = content, ToolCalls = toolCalls };
@@ -50,6 +56,9 @@ public sealed record LlmChatMessage
     public static LlmChatMessage ToolResult(string toolCallId, string content) =>
         new() { Role = LlmRole.Tool, ToolCallId = toolCallId, Content = content };
 }
+
+/// <summary>An image, as its bytes and the type they are in.</summary>
+public sealed record LlmImage(string MimeType, byte[] Bytes);
 
 /// <summary>
 /// A tool the model may call.
@@ -112,6 +121,20 @@ public sealed record LlmCompletion
     public int? CompletionTokens { get; init; }
 
     public int? TotalTokens { get; init; }
+
+    /// <summary>
+    /// The request exactly as it went to the endpoint, with any image left out.
+    /// </summary>
+    /// <remarks>
+    /// What prompt recording stores. The request as this app models it is not the same thing —
+    /// debugging a prompt means seeing what the endpoint was actually sent, tool schemas and all.
+    /// Images are replaced by a marker: a photo base64-encoded into the statistics table would be
+    /// the largest and most private thing in it.
+    /// </remarks>
+    public string? WireRequest { get; init; }
+
+    /// <summary>The response body exactly as it came back.</summary>
+    public string? WireResponse { get; init; }
 }
 
 /// <summary>A model from the provider's catalogue, for the Load models button.</summary>

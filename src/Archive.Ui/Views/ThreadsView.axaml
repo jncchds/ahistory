@@ -102,6 +102,9 @@
               <Run Text="{Binding SelectedThread.MessageCount, StringFormat='{}{0:N0} messages'}" />
             </TextBlock>
           </StackPanel>
+          <Button Content="{Binding ThreadExclusionLabel}" FontSize="11" Padding="8,2"
+                  VerticalAlignment="Center" Margin="12,0,0,0"
+                  IsVisible="{Binding CanExcludeThread}" Command="{Binding ToggleThreadExclusionCommand}" />
         </StackPanel>
       </Border>
 

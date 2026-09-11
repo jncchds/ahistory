@@ -26,6 +26,11 @@ public sealed class PromptTests
     private static readonly Dictionary<string, string> Released = new(StringComparer.Ordinal)
     {
         ["extract.session@1"] = "07650420dfd1b3e8e36ea5ee395f2a3cce01aea8cc924a04cf03c6ccc19f380a",
+        ["adjudicate.fact@1"] = "5cee4e6e448ec4cd5b65a8a1557f07f436b2efe8f392f8821f89056458613886",
+        ["diary.window@1"] = "820f3802aa361540b959992b296cdac5e819ef0289648e35c7d0f7c0d42e77c6",
+        ["rollup.year@1"] = "ea316c6946be5975cd8d9632aab260ea40d3e40c740b606d167b32140807ada9",
+        ["rollup.profile@1"] = "819dd951a129e8d8f22a6cf6e8e7b89f91cd774297b2b1de91bbc58d91583ff9",
+        ["ocr.image@1"] = "15b878432c9452c5f91ccb2ed6fed9031d0edb951fc3857287c79d3d6b2e2f9a",
     };
 
     [Fact]

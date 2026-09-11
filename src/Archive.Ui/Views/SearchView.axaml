@@ -22,7 +22,7 @@
 
     <TextBlock DockPanel.Dock="Top" Classes="heading" Text="Search" />
 
-    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,8,180,8,Auto" Margin="0,0,0,12">
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,8,Auto,8,180,8,Auto" Margin="0,0,0,12">
       <TextBox Grid.Column="0" Text="{Binding Query}" PlaceholderText="Search every message"
                AcceptsReturn="False">
         <TextBox.KeyBindings>
@@ -30,7 +30,11 @@
         </TextBox.KeyBindings>
       </TextBox>
 
-      <ComboBox Grid.Column="2" ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}"
+      <!-- §10: only there when it can work. Zero coverage is silent, not a disabled box. -->
+      <CheckBox Grid.Column="2" Content="by meaning too" VerticalAlignment="Center"
+                IsVisible="{Binding CanSearchByMeaning}" IsChecked="{Binding SearchByMeaning}" />
+
+      <ComboBox Grid.Column="4" ItemsSource="{Binding People}" SelectedItem="{Binding SelectedPerson}"
                 HorizontalAlignment="Stretch">
         <ComboBox.ItemTemplate>
           <DataTemplate x:DataType="vm:PersonFilterOption">
@@ -39,7 +43,7 @@
         </ComboBox.ItemTemplate>
       </ComboBox>
 
-      <Button Grid.Column="4" Content="Search" Command="{Binding RunCommand}" />
+      <Button Grid.Column="6" Content="Search" Command="{Binding RunCommand}" />
     </Grid>
 
     <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
@@ -126,6 +130,13 @@
                    result that hides which it is turns a mishearing into biography. -->
               <Border Background="#33808080" CornerRadius="3" Padding="5,0">
                 <TextBlock FontSize="10" VerticalAlignment="Center" Text="{Binding Provenance}" />
+              </Border>
+
+              <!-- §10: which half found it. "meaning" with no word in common is the interesting
+                   case, and the one most likely to be nonsense. -->
+              <Border Background="{DynamicResource AccentMutedBrush}" CornerRadius="3" Padding="5,0"
+                      IsVisible="{Binding FoundBy, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <TextBlock FontSize="10" VerticalAlignment="Center" Text="{Binding FoundBy}" />
               </Border>
             </StackPanel>
 

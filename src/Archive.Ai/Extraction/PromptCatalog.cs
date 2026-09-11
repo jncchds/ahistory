@@ -22,10 +22,33 @@ public static class PromptCatalog
 {
     public const string ExtractSession = "extract.session";
 
+    public const string AdjudicateFact = "adjudicate.fact";
+
+    /// <summary>
+    /// One month with one person — the diary entry and the month rollup, which are one text.
+    /// </summary>
+    /// <remarks>
+    /// The plan named them separately (ai-plan.md §6). Two calls producing two summaries of the same
+    /// month is the forty-rewrites cost the debounce exists to avoid, paid twice by design.
+    /// </remarks>
+    public const string DiaryWindow = "diary.window";
+
+    public const string RollupYear = "rollup.year";
+
+    public const string RollupProfile = "rollup.profile";
+
+    /// <summary>The text in a screenshot, copied out for search (spec §3).</summary>
+    public const string OcrImage = "ocr.image";
+
     /// <summary>The version of each prompt this build carries.</summary>
     private static readonly Dictionary<string, string> Versions = new(StringComparer.Ordinal)
     {
         [ExtractSession] = "1",
+        [AdjudicateFact] = "1",
+        [DiaryWindow] = "1",
+        [RollupYear] = "1",
+        [RollupProfile] = "1",
+        [OcrImage] = "1",
     };
 
     private static readonly string ResourcePrefix =

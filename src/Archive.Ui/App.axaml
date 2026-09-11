@@ -27,6 +27,7 @@
     <DataTemplate DataType="vm:ThreadsViewModel"><views:ThreadsView /></DataTemplate>
     <DataTemplate DataType="vm:AiSettingsViewModel"><views:AiSettingsView /></DataTemplate>
     <DataTemplate DataType="vm:AiStatsViewModel"><views:AiStatsView /></DataTemplate>
+    <DataTemplate DataType="vm:DiaryViewModel"><views:DiaryView /></DataTemplate>
   </Application.DataTemplates>
 
   <Application.Styles>

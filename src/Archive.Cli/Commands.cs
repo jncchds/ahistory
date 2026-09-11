@@ -1,7 +1,11 @@
 using Archive.Ai;
+using Archive.Ai.Attachments;
+using Archive.Ai.Diary;
 using Archive.Ai.Extraction;
 using Archive.Ai.Jobs;
 using Archive.Ai.Llm;
+using Archive.Ai.Merging;
+using Archive.Ai.Search;
 using Archive.Ai.Sessions;
 using Archive.Core;
 using Archive.Data;
@@ -596,6 +600,16 @@ internal static class Commands
             }
         }
 
+        if (args.Contains("--all"))
+        {
+            var code = Everything(database, jobs, options, args);
+
+            if (code != 0)
+            {
+                return code;
+            }
+        }
+
         var summary = coverage.Summary();
         var counts = jobs.Counts();
 
@@ -635,26 +649,9 @@ internal static class Commands
 
         var factory = new LlmProviderFactory();
 
-        // The same agreement the window asks for, asked here by flag. Typing --extract says "read
-        // these", not "and send them wherever the settings happen to point" — so without a yes for
-        // this endpoint, nothing is sent, and --consent is how to give one.
-        if (!AiConsent.CoversExtraction(state.Current, factory))
+        if (!Agreed(state, factory, args))
         {
-            var destination = AiConsent.Destination(state.Current, factory);
-
-            if (!args.Contains("--consent"))
-            {
-                Console.Error.WriteLine(
-                    $"error: sending archive text to {destination} has not been agreed to. Press Start "
-                    + "on the AI activity page, or pass --consent to agree for this endpoint.");
-                return 1;
-            }
-
-            var agreed = state.Current.Clone();
-            agreed.ExtractionConfirmedFor = destination;
-            state.Update(agreed);
-
-            Console.WriteLine($"agreed   archive text may be sent to {destination}");
+            return 1;
         }
 
         var limit = Limit(args);
@@ -697,6 +694,147 @@ internal static class Commands
         return 0;
     }
 
+    /// <summary>
+    /// The same agreement the window asks for, asked here by flag.
+    /// </summary>
+    /// <remarks>
+    /// Typing a command says "read these", not "and send them wherever the settings happen to
+    /// point" — so without a yes for this endpoint nothing is sent, and <c>--consent</c> is how to
+    /// give one.
+    /// </remarks>
+    private static bool Agreed(AiState state, LlmProviderFactory factory, string[] args)
+    {
+        if (AiConsent.CoversExtraction(state.Current, factory))
+        {
+            return true;
+        }
+
+        var destination = AiConsent.Destination(state.Current, factory);
+
+        if (!args.Contains("--consent"))
+        {
+            Console.Error.WriteLine(
+                $"error: sending archive text to {destination} has not been agreed to. Press Start "
+                + "on the AI activity page, or pass --consent to agree for this endpoint.");
+            return false;
+        }
+
+        var agreed = state.Current.Clone();
+        agreed.ExtractionConfirmedFor = destination;
+        state.Update(agreed);
+
+        Console.WriteLine($"agreed   archive text may be sent to {destination}");
+
+        return true;
+    }
+
+    /// <summary>
+    /// Runs the whole AI layer over an archive, as the app's background runner would.
+    /// </summary>
+    /// <remarks>
+    /// Segmentation, reading, merging, the diary, the index and media — every kind of work, planned
+    /// by the same invalidation the app uses and drained by the same runner, until nothing is left
+    /// or <c>--limit</c> is reached. The daily budget holds here as it does in the window.
+    /// </remarks>
+    private static int Everything(Database database, AiJobs jobs, ArchiveOptions options, string[] args)
+    {
+        var state = new AiState(new AiSettingsStore());
+
+        if (!state.Current.IsUsable)
+        {
+            Console.Error.WriteLine(
+                "error: AI is not configured. Switch it on and choose a model in the app first.");
+            return 1;
+        }
+
+        var factory = new LlmProviderFactory();
+
+        if (!Agreed(state, factory, args))
+        {
+            return 1;
+        }
+
+        var interactions = new AiInteractions(database);
+        var client = new AiClient(factory, interactions);
+        var windows = new ExtractionWindows(database);
+        var segmenter = new SessionSegmenter(database);
+        var merger = new FactMerger(database, client);
+        var inputs = new DiaryInputs(database);
+        var store = new DiaryStore(database, inputs);
+        var diary = new DiaryRunner(database, inputs, store, client);
+        var embeddings = new EmbeddingStore(database);
+        var media = new MediaReader(database, new FileSystemMediaStore(options), client);
+
+        IAiJobHandler[] handlers =
+        [
+            new SegmentJobHandler(segmenter),
+            new ExtractJobHandler(
+                new ExtractRunner(client, windows, new FactWriter(database), _loggerFactory.CreateLogger<ExtractRunner>()),
+                state, factory),
+            new AdjudicateJobHandler(merger, state, factory),
+            new DiaryJobHandler(diary, state, factory),
+            new RollupJobHandler(diary, state, factory),
+            new EmbedJobHandler(embeddings, new SessionText(windows), client, state, factory),
+            new OcrJobHandler(media, state, factory),
+            new TranscribeJobHandler(media, state, factory),
+        ];
+
+        using var runner = new AiRunner(jobs, state, handlers, budget: new AiBudget(interactions));
+
+        var work = new AiWork(
+            database, jobs, segmenter, runner, merger, new DiaryPlanner(database, inputs, store), embeddings, state, media);
+
+        var limit = Limit(args);
+        var total = 0;
+        var started = DateTime.UtcNow;
+
+        work.PlanSegmentation();
+
+        // Each pass makes the next one's work: sessions to read, facts to merge, months to write.
+        while (total < limit)
+        {
+            work.PlanAll();
+
+            var handled = runner.DrainAsync(limit - total).GetAwaiter().GetResult();
+
+            total += handled;
+
+            if (handled == 0)
+            {
+                break;
+            }
+
+            Console.WriteLine($"pass     {handled:N0} job(s), {total:N0} so far");
+        }
+
+        if (runner.IsOverBudget)
+        {
+            Console.WriteLine("budget   the daily token budget is reached; the rest waits for tomorrow");
+        }
+
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT (SELECT count(*) FROM fact WHERE retracted_utc IS NULL AND merged_into IS NULL),
+                   (SELECT count(*) FROM fact WHERE merged_into IS NOT NULL),
+                   (SELECT count(*) FROM derived_artifact WHERE kind IN ('diary', 'rollup')),
+                   (SELECT count(*) FROM embedding),
+                   (SELECT count(*) FROM derived_artifact WHERE kind IN ('ocr', 'transcript'));
+            """;
+
+        using var reader = command.ExecuteReader();
+        reader.Read();
+
+        Console.WriteLine($"done     {total:N0} job(s) in {(DateTime.UtcNow - started).TotalSeconds:N1}s");
+        Console.WriteLine($"facts    {reader.GetInt64(0):N0}, and {reader.GetInt64(1):N0} folded into them");
+        Console.WriteLine($"diary    {reader.GetInt64(2):N0} text(s)");
+        Console.WriteLine($"index    {reader.GetInt64(3):N0} vector(s)");
+        Console.WriteLine($"media    {reader.GetInt64(4):N0} transcript(s) and image text(s)");
+
+        return 0;
+    }
+
     /// <summary>How many jobs a drain may take, from <c>--limit N</c>. Unbounded without it.</summary>
     private static int Limit(string[] args)
     {
@@ -729,10 +867,12 @@ internal static class Commands
                                                 do not state one (VK, QIP)
               ahistory sources <save.db>        list the sources in a save
               ahistory stats <save.db>          what the archive is made of
-              ahistory ai <save.db> [--segment] [--extract] [--limit N]
+              ahistory ai <save.db> [--segment] [--extract] [--all] [--consent] [--limit N]
                                                 what the AI layer has read of this archive.
                                                 --segment splits it into sessions (no model);
                                                 --extract reads them with the configured model;
+                                                --all runs everything: reading, merging, the
+                                                diary, the search index and media;
                                                 --consent agrees to send text to that endpoint
               ahistory synth <folder> [--messages N] [--chats N]
                                                 write a synthetic export (no real data;

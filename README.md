@@ -37,18 +37,21 @@ keyword search, and standalone builds for all three desktop platforms.
 | M6 | Full-text search | ✅ |
 | M7 | Packaging for Windows, Linux and macOS | ✅ |
 
-In progress: the AI layer. Configuration, providers and per-call statistics are in — switch it on,
-point it at a local or hosted model, and the app checks that the model can actually call tools
-before anything else is built on it. So is the work queue: the archive is split into sessions on
-gaps of silence, each is classified as worth reading or as logistics, and a background runner
-drains the queue while you read. None of that involves a model, which is why it was built first.
-Extraction is in too: a model reads each conversation worth reading and records what it says about
-the people in it, every fact citing the messages it came from, shown beside the conversation and
-correctable there — and nothing is sent to a model until you have been told how much, roughly what
-it costs, and where it goes. What comes next is fact merging, rollups and the diary, then embeddings
-and hybrid search, and transcription and OCR. The V1 schema already carries the seams those need, so they arrive as new code rather
-than as a migration of everything. The plan is in
-[docs/ai-plan.md](docs/ai-plan.md).
+The AI layer, off until you switch it on. Point it at a local or hosted model and the app checks it
+can call tools. A background runner splits the archive into sessions on gaps of silence and, once
+you have agreed to where text goes, has the model:
+
+- read each conversation worth reading and record what it says about the people in it, every fact
+  citing its messages, shown beside the conversation and correctable there;
+- merge the same fact said a dozen ways into one, and close values that changed;
+- write a diary — a month at a time per person, then years and a portrait — where every sentence
+  opens the message it rests on and months of silence are said out loud;
+- index conversations for search by meaning, mixed with keyword search and labelled by which found what;
+- read the text out of screenshots and transcribe voice messages, if you name models for those.
+
+People, conversations or the whole archive can be left out, a daily token budget caps spending, and
+everything the AI produced can be forgotten in one typed confirmation. The plan and what was built
+are in [docs/ai-plan.md](docs/ai-plan.md).
 
 ## How it works
 
@@ -222,7 +225,10 @@ produces shapes the importer already understands.
 
 `ahistory ai <save.db>` reports how much of it the AI layer has read. `--segment` splits it into
 sessions first — no model, no key and no network, which is what makes the queue and its coverage
-counts demonstrable before anything costs a token.
+counts demonstrable before anything costs a token. `--extract` reads sessions with the configured
+model, and `--all` runs everything the app would: reading, merging, the diary, the search index and
+media. Both refuse to send anything until the endpoint has been agreed to, in the app or with
+`--consent`, and `--limit N` stops after N jobs.
 
 ## Logs
 
@@ -270,6 +276,12 @@ Switching AI on means choosing an endpoint, and that choice is what decides whet
 sent anywhere: point it at a model running on your own machine and it still never leaves. The app
 says so where the choice is made rather than in a policy document, and the settings that hold your
 API key are stored outside the archive, so a save you copy or hand to someone carries no key.
+
+Nothing is sent until you have been shown how much would go, roughly what it costs and where, and
+agreed for that endpoint — and the question names everything the same yes covers: conversations,
+their index, photos and voice messages. Photos and voice messages are sent only if you name a model
+for them. Someone you leave out is left out of all of it, their messages and their files, and never
+sent; a whole archive can say no for itself, in the file, so it holds on any machine.
 
 If you are archiving correspondence that is not your own, the design has a
 [deliberate position on that](message-archive-design.md) — a save records where it came from, and

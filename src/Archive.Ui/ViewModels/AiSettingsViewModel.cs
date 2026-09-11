@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Archive.Ai;
 using Archive.Ai.Jobs;
+using Archive.Ai.Search;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -49,6 +50,8 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
     private readonly AiConnectionCheck _check;
     private readonly AiForget? _forget;
     private readonly AiRunner? _runner;
+    private readonly AiExclusions? _exclusions;
+    private readonly EmbeddingStore? _embeddings;
 
     public AiSettingsViewModel(
         AiState state,
@@ -56,7 +59,9 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         AiConnectionCheck check,
         AiForget? forget = null,
         AiRunner? runner = null,
-        ILogger<AiSettingsViewModel>? logger = null)
+        ILogger<AiSettingsViewModel>? logger = null,
+        AiExclusions? exclusions = null,
+        EmbeddingStore? embeddings = null)
         : base(logger)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -66,6 +71,8 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         _check = check ?? throw new ArgumentNullException(nameof(check));
         _forget = forget;
         _runner = runner;
+        _exclusions = exclusions;
+        _embeddings = embeddings;
 
         Load(state.Current);
     }
@@ -118,6 +125,41 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
     private string _embeddingModel = string.Empty;
 
     [ObservableProperty]
+    private string _visionModel = string.Empty;
+
+    [ObservableProperty]
+    private string _transcriptionModel = string.Empty;
+
+    /// <summary>Tokens per 24 hours; 0 for no cap.</summary>
+    [ObservableProperty]
+    private long _dailyTokenBudget;
+
+    /// <summary>
+    /// What changing the embedding model will do, said before it is saved (ai-plan.md §9.2).
+    /// </summary>
+    /// <remarks>
+    /// Not "your index will be lost": it will not be. The old vectors keep answering until the new
+    /// ones are complete. What the user needs to know is that the rebuild happens, in the background,
+    /// and that nothing breaks meanwhile.
+    /// </remarks>
+    [ObservableProperty]
+    private string? _embeddingNote;
+
+    /// <summary>Vectors from models that are neither configured nor in use.</summary>
+    [ObservableProperty]
+    private long _unusedVectors;
+
+    /// <summary>This archive has said no to being read by a model, on any machine.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OptOutLabel))]
+    private bool _archiveOptedOut;
+
+    public bool CanOptOut => _exclusions is not null;
+
+    public string OptOutLabel =>
+        ArchiveOptedOut ? "Let AI read this archive again" : "Never read this archive with AI";
+
+    [ObservableProperty]
     private string _outputLanguage = "English";
 
     [ObservableProperty]
@@ -167,6 +209,84 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
     partial void OnMainModelChanged(string value) => OnPropertyChanged(nameof(CanSave));
 
     partial void OnDisclaimerAcceptedChanged(bool value) => OnPropertyChanged(nameof(CanSave));
+
+    partial void OnEmbeddingModelChanged(string value) => _ = DescribeEmbeddingsAsync();
+
+    /// <summary>
+    /// Leaves this whole archive out, or lets it back in.
+    /// </summary>
+    /// <remarks>
+    /// Written into the save, not the settings file, so it travels with the archive: a save built
+    /// from someone else's correspondence stays unread on whichever machine it is opened.
+    /// </remarks>
+    [RelayCommand]
+    private Task ToggleOptOut() => Pending = RunAsync(async () =>
+    {
+        if (_exclusions is null)
+        {
+            return;
+        }
+
+        var optedOut = !ArchiveOptedOut;
+
+        await Task.Run(() => _exclusions.SetSaveOptOut(optedOut)).ConfigureAwait(true);
+
+        ArchiveOptedOut = optedOut;
+        Status = optedOut
+            ? "Nothing in this archive will be read by a model, on this machine or any other."
+            : "This archive can be read again. What was skipped is back in the queue.";
+        StatusIsGood = true;
+    });
+
+    [RelayCommand]
+    private Task ClearUnusedVectors() => Pending = RunAsync(async () =>
+    {
+        if (_embeddings is null)
+        {
+            return;
+        }
+
+        var configured = _state.Current.EmbeddingModel;
+        var cleared = await Task.Run(() => _embeddings.ClearUnused(configured)).ConfigureAwait(true);
+
+        Status = $"Cleared {cleared:N0} vector(s) from models no longer in use.";
+        StatusIsGood = true;
+
+        await DescribeEmbeddingsAsync().ConfigureAwait(true);
+    });
+
+    private async Task DescribeEmbeddingsAsync()
+    {
+        if (_embeddings is null)
+        {
+            return;
+        }
+
+        var saved = _state.Current.EmbeddingModel.Trim();
+        var typed = EmbeddingModel.Trim();
+
+        var (note, unused) = await Task.Run(() =>
+        {
+            var models = _embeddings.Models();
+            var indexed = models.FirstOrDefault(m => m.Model == saved).Count;
+
+            string? text = null;
+
+            if (!string.Equals(typed, saved, StringComparison.Ordinal) && indexed > 0)
+            {
+                text = typed.Length == 0
+                    ? $"{indexed:N0} conversation(s) are indexed with {saved}. Leaving this empty turns search by meaning off; the vectors stay until they are cleared below."
+                    : $"{indexed:N0} conversation(s) are indexed with {saved}. {typed} will be built in the background and takes over when it is complete — search keeps using {saved} until then.";
+            }
+
+            var keep = new[] { saved, _embeddings.Active(saved) };
+
+            return (text, models.Where(m => !keep.Contains(m.Model)).Sum(m => m.Count));
+        }).ConfigureAwait(true);
+
+        EmbeddingNote = note;
+        UnusedVectors = unused;
+    }
 
     [RelayCommand]
     private Task LoadModels() => Pending = RunAsync(async () =>
@@ -261,7 +381,16 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         HasSomethingToForget
         && string.Equals(ForgetConfirmation.Trim(), ForgetWord, StringComparison.OrdinalIgnoreCase);
 
-    public override Task RefreshAsync() => RunAsync(LoadForgetCountsAsync);
+    public override Task RefreshAsync() => RunAsync(async () =>
+    {
+        await LoadForgetCountsAsync().ConfigureAwait(true);
+        await DescribeEmbeddingsAsync().ConfigureAwait(true);
+
+        if (_exclusions is not null)
+        {
+            ArchiveOptedOut = await Task.Run(_exclusions.SaveOptedOut).ConfigureAwait(true);
+        }
+    });
 
     [RelayCommand]
     private Task ForgetEverything() => Pending = RunAsync(async () =>
@@ -280,7 +409,8 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         var removed = await Task.Run(_forget.Everything).ConfigureAwait(true);
 
         ForgetConfirmation = string.Empty;
-        Status = $"Forgotten: {removed.Facts:N0} fact(s), {removed.Sessions:N0} session(s) and "
+        Status = $"Forgotten: {removed.Facts:N0} fact(s), {removed.DiaryTexts:N0} diary text(s), "
+            + $"{removed.Vectors:N0} vector(s), {removed.Sessions:N0} session(s) and "
             + $"{removed.Calls:N0} recorded call(s). Every message is exactly as it was."
             + (_state.Current.Enabled
                 ? " AI is still on, so the archive will be read again the next time work is looked for."
@@ -302,8 +432,10 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         HasSomethingToForget = !counts.IsEmpty;
         ForgetSummary = counts.IsEmpty
             ? "Nothing to forget: the AI layer has produced nothing in this archive."
-            : $"{counts.Facts:N0} fact(s), {counts.Sessions:N0} session(s), {counts.Calls:N0} recorded "
-              + $"call(s) and {counts.Jobs:N0} queued job(s). Every message, media file and search stays.";
+            : $"{counts.Facts:N0} fact(s), {counts.DiaryTexts:N0} diary text(s), {counts.Vectors:N0} vector(s), "
+              + $"{counts.MediaTexts:N0} transcript(s) and image text(s), {counts.Sessions:N0} session(s), "
+              + $"{counts.Calls:N0} recorded call(s) and {counts.Jobs:N0} queued job(s). "
+              + "Every message, media file and keyword search stays.";
     }
 
     /// <summary>Puts the form back to what is stored, discarding edits.</summary>
@@ -328,6 +460,9 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         settings.MainModel = MainModel.Trim();
         settings.UtilityModel = UtilityModel.Trim();
         settings.EmbeddingModel = EmbeddingModel.Trim();
+        settings.VisionModel = VisionModel.Trim();
+        settings.TranscriptionModel = TranscriptionModel.Trim();
+        settings.DailyTokenBudget = Math.Max(0, DailyTokenBudget);
         settings.OutputLanguage = string.IsNullOrWhiteSpace(OutputLanguage) ? "English" : OutputLanguage.Trim();
         settings.RecordPromptBodies = RecordPromptBodies;
         settings.MaxParallelCalls = Math.Max(1, MaxParallelCalls);
@@ -345,6 +480,9 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         MainModel = settings.MainModel;
         UtilityModel = settings.UtilityModel;
         EmbeddingModel = settings.EmbeddingModel;
+        VisionModel = settings.VisionModel;
+        TranscriptionModel = settings.TranscriptionModel;
+        DailyTokenBudget = settings.DailyTokenBudget;
         OutputLanguage = settings.OutputLanguage;
         RecordPromptBodies = settings.RecordPromptBodies;
         MaxParallelCalls = settings.MaxParallelCalls;

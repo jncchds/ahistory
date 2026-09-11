@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Archive.Ai.Search;
 using Archive.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -34,9 +35,41 @@ public sealed partial class SearchViewModel(
     ArchiveQueries queries,
     ArchiveSearch search,
     PersonConversation conversation,
-    ILogger<SearchViewModel>? logger = null)
+    ILogger<SearchViewModel>? logger = null,
+    HybridSearch? hybrid = null)
     : ViewModelBase(logger)
 {
+    /// <summary>
+    /// Whether the user has chosen, this session, to search by meaning or not.
+    /// </summary>
+    /// <remarks>
+    /// Until they do, the toggle follows coverage — on once enough of the archive is embedded to
+    /// help (ai-plan.md §10). After they do, their choice stands.
+    /// </remarks>
+    private bool _meaningChosen;
+
+    private bool _settingMeaning;
+
+    /// <summary>
+    /// True when search by meaning can run: AI on, the endpoint agreed to, and vectors to search.
+    /// </summary>
+    /// <remarks>
+    /// False means the toggle is not drawn at all. Zero coverage is silent — a search bar that
+    /// explains what the user is missing is exactly what P1 refuses to have.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _canSearchByMeaning;
+
+    [ObservableProperty]
+    private bool _searchByMeaning;
+
+    partial void OnSearchByMeaningChanged(bool value)
+    {
+        if (!_settingMeaning)
+        {
+            _meaningChosen = true;
+        }
+    }
     private const int ResultLimit = 200;
 
     /// <summary>How many lines either side of a hit the preview shows.</summary>
@@ -129,6 +162,20 @@ public sealed partial class SearchViewModel(
 
         SelectedPerson = People.FirstOrDefault(p => p.Id == previous) ?? People[0];
 
+        if (hybrid is not null)
+        {
+            var availability = await Task.Run(hybrid.Availability).ConfigureAwait(true);
+
+            CanSearchByMeaning = availability.IsAvailable;
+
+            if (!_meaningChosen)
+            {
+                _settingMeaning = true;
+                SearchByMeaning = availability.Recommended;
+                _settingMeaning = false;
+            }
+        }
+
         // A refresh after an import must not silently show results from before it.
         if (HasSearched)
         {
@@ -205,6 +252,23 @@ public sealed partial class SearchViewModel(
         if (string.IsNullOrWhiteSpace(query))
         {
             TotalMatches = 0;
+            Notify();
+            return;
+        }
+
+        // By meaning as well, when that can run and is wanted. The keyword half inside it is the
+        // same search as below; this only adds a second list and merges the two.
+        if (hybrid is not null && CanSearchByMeaning && SearchByMeaning)
+        {
+            var merged = await Task.Run(() => hybrid.SearchAsync(query, filter, ResultLimit)).ConfigureAwait(true);
+
+            foreach (var hit in merged)
+            {
+                Results.Add(hit);
+            }
+
+            TotalMatches = merged.Count;
+            TotalIsExact = true;
             Notify();
             return;
         }

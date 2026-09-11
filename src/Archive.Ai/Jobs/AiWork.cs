@@ -1,4 +1,8 @@
+using Archive.Ai.Attachments;
+using Archive.Ai.Diary;
 using Archive.Ai.Extraction;
+using Archive.Ai.Merging;
+using Archive.Ai.Search;
 using Archive.Ai.Sessions;
 using Archive.Data;
 
@@ -19,7 +23,16 @@ namespace Archive.Ai.Jobs;
 /// is written at all.
 /// </para>
 /// </remarks>
-public sealed class AiWork(Database database, AiJobs jobs, SessionSegmenter segmenter, AiRunner runner)
+public sealed class AiWork(
+    Database database,
+    AiJobs jobs,
+    SessionSegmenter segmenter,
+    AiRunner runner,
+    FactMerger? merger = null,
+    DiaryPlanner? diary = null,
+    EmbeddingStore? embeddings = null,
+    AiState? state = null,
+    MediaReader? media = null)
 {
     private readonly Database _database = database ?? throw new ArgumentNullException(nameof(database));
 
@@ -108,6 +121,145 @@ public sealed class AiWork(Database database, AiJobs jobs, SessionSegmenter segm
         }
 
         return queued;
+    }
+
+    /// <summary>
+    /// Queues merging for every person with facts that might be one fact (A4).
+    /// </summary>
+    /// <remarks>
+    /// Lowest priority: merging tidies what extraction wrote, and doing it while extraction is still
+    /// writing means doing it again. Queued last, it runs once the newest conversations have been
+    /// read and before the diary, which waits for it.
+    /// </remarks>
+    public int PlanMerging()
+    {
+        if (merger is null)
+        {
+            return 0;
+        }
+
+        var queued = 0;
+
+        foreach (var personId in merger.PeopleWithCandidates())
+        {
+            var plan = merger.Plan(personId);
+
+            if (!plan.IsEmpty && _jobs.Enqueue(AiJobKind.Adjudicate, "person", personId, plan.InputHash))
+            {
+                queued++;
+            }
+        }
+
+        if (queued > 0)
+        {
+            _runner.Poke();
+        }
+
+        return queued;
+    }
+
+    /// <summary>
+    /// Everything that sends archive text to a model, in the order it depends on itself.
+    /// </summary>
+    /// <remarks>
+    /// What runs after every pass of the runner once the endpoint has been agreed to: reading a
+    /// session makes facts, facts make merges, and so on up. Each step is idempotent, so asking
+    /// again when nothing changed queues nothing.
+    /// </remarks>
+    public int PlanAll() => PlanExtraction() + PlanMerging() + PlanDiary() + PlanEmbeddings() + PlanMedia();
+
+    /// <summary>
+    /// Queues reading for images and voice messages not yet read with the configured models (A7).
+    /// </summary>
+    /// <remarks>
+    /// Each only when its model is set. Neither is on by default: every photo and every voice note
+    /// is a call, and both are often more private than the messages around them.
+    /// </remarks>
+    public int PlanMedia()
+    {
+        if (media is null || state is null)
+        {
+            return 0;
+        }
+
+        var settings = state.Current;
+        var queued = 0;
+
+        if (!string.IsNullOrWhiteSpace(settings.VisionModel))
+        {
+            queued += media.Needing(AiJobKind.Ocr, settings.VisionModel.Trim()).Count(file =>
+                _jobs.Enqueue(AiJobKind.Ocr, "media", file.Hash, file.InputHash, (int)(file.LastUnix / 86_400)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.TranscriptionModel))
+        {
+            queued += media.Needing(AiJobKind.Transcribe, settings.TranscriptionModel.Trim()).Count(file =>
+                _jobs.Enqueue(AiJobKind.Transcribe, "media", file.Hash, file.InputHash, (int)(file.LastUnix / 86_400)));
+        }
+
+        if (queued > 0)
+        {
+            _runner.Poke();
+        }
+
+        return queued;
+    }
+
+    /// <summary>
+    /// Queues embedding for every thread with sessions the configured model has not embedded (A6).
+    /// </summary>
+    /// <remarks>
+    /// Changing the embedding model is one of the invalidations §11.1 lists: every thread is then
+    /// out of date for the new model and is queued, while search carries on with the old vectors.
+    /// A blank model queues nothing — search stays keyword-only, which is its normal state.
+    /// </remarks>
+    public int PlanEmbeddings()
+    {
+        if (embeddings is null || state is null || string.IsNullOrWhiteSpace(state.Current.EmbeddingModel))
+        {
+            return 0;
+        }
+
+        var model = state.Current.EmbeddingModel.Trim();
+
+        var queued = embeddings.ThreadsNeeding(model).Count(thread =>
+            _jobs.Enqueue(AiJobKind.Embed, "thread", thread.ThreadId, thread.InputHash, (int)(thread.LastUnix / 86_400)));
+
+        if (queued > 0)
+        {
+            _runner.Poke();
+        }
+
+        return queued;
+    }
+
+    /// <summary>
+    /// Queues the diary texts that are out of date and settled enough to write (A5).
+    /// </summary>
+    /// <remarks>
+    /// Months first, then what summarises them: the planner looks at the queue to decide whether a
+    /// year is ready, and a month queued a moment ago has to be there for it to see.
+    /// </remarks>
+    public int PlanDiary()
+    {
+        if (diary is null)
+        {
+            return 0;
+        }
+
+        var queued = diary.Months().Count(Enqueue);
+
+        queued += diary.Summaries().Count(Enqueue);
+
+        if (queued > 0)
+        {
+            _runner.Poke();
+        }
+
+        return queued;
+
+        bool Enqueue(DiaryWork work) =>
+            _jobs.Enqueue(work.Kind, "person", work.SubjectId, work.InputHash, work.Priority);
     }
 
     /// <summary>How many sessions extraction would read now — the number the confirmation shows.</summary>

@@ -73,16 +73,22 @@ public sealed class AiRunner : IDisposable
     private readonly AiState _state;
     private readonly Dictionary<AiJobKind, IAiJobHandler> _handlers;
     private readonly ILogger _log;
+    private readonly AiBudget? _budget;
     private readonly SemaphoreSlim _wake = new(0);
 
     private CancellationTokenSource? _stopping;
     private Task _loop = Task.CompletedTask;
 
+    /// <param name="budget">
+    /// The daily token cap. Without one, nothing is ever held for cost — which is what a test that
+    /// is not about the budget wants, and what the head never does.
+    /// </param>
     public AiRunner(
         AiJobs jobs,
         AiState state,
         IEnumerable<IAiJobHandler> handlers,
-        ILogger<AiRunner>? logger = null)
+        ILogger<AiRunner>? logger = null,
+        AiBudget? budget = null)
     {
         ArgumentNullException.ThrowIfNull(handlers);
 
@@ -90,6 +96,7 @@ public sealed class AiRunner : IDisposable
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _handlers = handlers.ToDictionary(h => h.Kind);
         _log = logger ?? NullLogger<AiRunner>.Instance;
+        _budget = budget;
 
         // Switching AI off stops the work, not just the pages.
         _state.Changed += (_, _) =>
@@ -118,6 +125,9 @@ public sealed class AiRunner : IDisposable
     public Func<int>? Replan { get; set; }
 
     public bool IsRunning => !_loop.IsCompleted;
+
+    /// <summary>True while the daily token budget is holding model work.</summary>
+    public bool IsOverBudget => _budget?.IsReached(_state.Current) ?? false;
 
     /// <summary>Begins draining, if it is not already.</summary>
     public void Start()
@@ -250,11 +260,24 @@ public sealed class AiRunner : IDisposable
     /// Kinds of work that exist but may not be done now, and so are not to be claimed.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Recomputed for every claim: consent can be withdrawn, or made stale by pointing the settings
     /// at a different endpoint, halfway through a drain — and the very next job has to see that.
+    /// </para>
+    /// <para>
+    /// The daily budget works the same way. Once it is spent, every kind of work that calls a model
+    /// is held and local work carries on; the idle timer looks again, and the work resumes as the
+    /// oldest of the day's calls fall out of the window.
+    /// </para>
     /// </remarks>
-    private AiJobKind[] Withheld() =>
-        [.. _handlers.Values.Where(handler => !handler.IsAllowed).Select(handler => handler.Kind)];
+    private AiJobKind[] Withheld()
+    {
+        var overBudget = IsOverBudget;
+
+        return [.. _handlers.Values
+            .Where(handler => !handler.IsAllowed || (overBudget && handler.UsesModel))
+            .Select(handler => handler.Kind)];
+    }
 
     private async Task LoopAsync(CancellationToken cancellationToken)
     {

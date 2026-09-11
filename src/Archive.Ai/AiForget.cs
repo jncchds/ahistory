@@ -4,9 +4,14 @@ using Microsoft.Data.Sqlite;
 namespace Archive.Ai;
 
 /// <summary>What the AI layer has produced in a save, as the confirmation shows it.</summary>
-public sealed record ForgetCounts(long Facts, long Sessions, long Calls, long Jobs)
+/// <param name="DiaryTexts">Month entries, year summaries and portraits.</param>
+/// <param name="Vectors">Sessions embedded for search by meaning, across every model.</param>
+/// <param name="MediaTexts">Transcripts and text read out of images.</param>
+public sealed record ForgetCounts(
+    long Facts, long Sessions, long Calls, long Jobs, long DiaryTexts, long Vectors, long MediaTexts)
 {
-    public bool IsEmpty => Facts == 0 && Sessions == 0 && Calls == 0 && Jobs == 0;
+    public bool IsEmpty =>
+        Facts == 0 && Sessions == 0 && Calls == 0 && Jobs == 0 && DiaryTexts == 0 && Vectors == 0 && MediaTexts == 0;
 }
 
 /// <summary>
@@ -50,13 +55,16 @@ public sealed class AiForget(Database database)
 
         using (var command = connection.CreateCommand())
         {
-            // Artifacts first: facts and their citations go with them by cascade. Then anything
-            // left standing, relationships, the queue, the statistics, and last the sessions —
-            // whose removal sets every message's session back to none.
+            // Artifacts first: facts and their citations go with them by cascade, and so do the
+            // search rows for transcripts and text read from images. Then anything left standing,
+            // merge verdicts, relationships, vectors, the queue, the statistics, and last the
+            // sessions — whose removal sets every message's session back to none.
             command.CommandText = """
                 DELETE FROM derived_artifact;
+                DELETE FROM fact_pair_verdict;
                 DELETE FROM fact;
                 DELETE FROM person_edge;
+                DELETE FROM embedding;
                 DELETE FROM ai_job;
                 DELETE FROM ai_interaction;
                 DELETE FROM session;
@@ -78,12 +86,17 @@ public sealed class AiForget(Database database)
             SELECT (SELECT count(*) FROM fact),
                    (SELECT count(*) FROM session),
                    (SELECT count(*) FROM ai_interaction),
-                   (SELECT count(*) FROM ai_job);
+                   (SELECT count(*) FROM ai_job),
+                   (SELECT count(*) FROM derived_artifact WHERE kind IN ('diary', 'rollup')),
+                   (SELECT count(*) FROM embedding),
+                   (SELECT count(*) FROM derived_artifact WHERE kind IN ('ocr', 'transcript'));
             """;
 
         using var reader = command.ExecuteReader();
         reader.Read();
 
-        return new ForgetCounts(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
+        return new ForgetCounts(
+            reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3),
+            reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6));
     }
 }

@@ -89,6 +89,37 @@ public sealed class AiClient(
         }
     }
 
+    /// <summary>Speech to text with the configured transcription model.</summary>
+    public async Task<string> TranscribeAsync(
+        AiSettings settings,
+        byte[] audio,
+        string fileName,
+        AiSubject subject = default,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(audio);
+
+        var provider = _factory.Create(settings);
+        var started = Stopwatch.GetTimestamp();
+        var model = settings.TranscriptionModel.Trim();
+
+        try
+        {
+            var text = await provider.TranscribeAsync(model, audio, fileName, cancellationToken).ConfigureAwait(false);
+
+            Record(settings, provider, AiPurpose.Transcribe, subject, started, model: model);
+
+            return text;
+        }
+        catch (LlmProviderException ex)
+        {
+            Record(settings, provider, AiPurpose.Transcribe, subject, started, failure: ex, model: model);
+
+            throw;
+        }
+    }
+
     /// <summary>
     /// The catalogue behind the Load models button.
     /// </summary>
@@ -155,11 +186,13 @@ public sealed class AiClient(
                 HttpStatus = failure?.HttpStatus,
                 Failed = failure is not null,
                 FailureKind = failure is null ? null : KindOf(failure),
+                // What the endpoint was actually sent and actually said, when the provider has it;
+                // the request as modelled here otherwise.
                 RequestJson = settings.RecordPromptBodies && request is not null
-                    ? JsonSerializer.Serialize(request)
+                    ? completion?.WireRequest ?? failure?.RequestPayload ?? JsonSerializer.Serialize(request)
                     : null,
                 ResponseJson = settings.RecordPromptBodies
-                    ? failure?.ErrorPayload ?? (completion is null ? null : JsonSerializer.Serialize(completion))
+                    ? failure?.ErrorPayload ?? completion?.WireResponse
                     : null,
             });
         }
@@ -194,4 +227,8 @@ public readonly record struct AiSubject(string? Kind, string? Id)
     public static AiSubject Session(string id) => new("session", id);
 
     public static AiSubject Person(string id) => new("person", id);
+
+    public static AiSubject Thread(string id) => new("thread", id);
+
+    public static AiSubject Media(string hash) => new("media", hash);
 }

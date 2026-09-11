@@ -358,6 +358,8 @@ public sealed class SessionSegmenter(Database database, TimeSpan? gap = null)
                 delete.ExecuteNonQuery();
             }
 
+            Extraction.FactWriter.ReleaseFromRetracted(connection);
+
             transaction.Commit();
         }
     }

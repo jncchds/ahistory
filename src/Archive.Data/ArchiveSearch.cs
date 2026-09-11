@@ -23,7 +23,18 @@ public sealed record SearchHit(
     string SentAtUtc,
     long SentAtUnix,
     string Provenance,
-    IReadOnlyList<SnippetSegment> Snippet);
+    IReadOnlyList<SnippetSegment> Snippet)
+{
+    /// <summary>
+    /// Which half of a hybrid search found this: "keyword", "meaning" or "both"; null for plain
+    /// keyword search.
+    /// </summary>
+    /// <remarks>
+    /// A hit found by meaning with no word in common is the interesting case and also the one most
+    /// likely to be nonsense, so it has to be recognisable at a glance (ai-plan.md §10).
+    /// </remarks>
+    public string? FoundBy { get; init; }
+}
 
 /// <summary>Narrows a search. Every field is optional.</summary>
 public sealed record SearchFilter(
@@ -88,7 +99,9 @@ public sealed class ArchiveSearch(Database database)
                    snippet(search_fts, 0, '{MatchStart}', '{MatchEnd}', '…', 12)
             FROM search_fts
             JOIN search_document sd ON sd.id = search_fts.rowid
-            JOIN message m ON m.id = sd.message_id
+            -- A transcript or the text in an image is found through the message it came with (§3).
+            LEFT JOIN derived_artifact da ON da.id = sd.derived_artifact_id
+            JOIN message m ON m.id = coalesce(sd.message_id, da.source_message_id)
             LEFT JOIN thread t ON t.id = m.thread_id
             LEFT JOIN identity i ON i.id = m.sender_identity_id
             LEFT JOIN identity_person ip ON ip.identity_id = i.id
@@ -163,7 +176,8 @@ public sealed class ArchiveSearch(Database database)
                 SELECT 1
                 FROM search_fts
                 JOIN search_document sd ON sd.id = search_fts.rowid
-                JOIN message m ON m.id = sd.message_id
+                LEFT JOIN derived_artifact da ON da.id = sd.derived_artifact_id
+                JOIN message m ON m.id = coalesce(sd.message_id, da.source_message_id)
                 LEFT JOIN identity i ON i.id = m.sender_identity_id
                 LEFT JOIN identity_person ip ON ip.identity_id = i.id
                 WHERE search_fts MATCH $match

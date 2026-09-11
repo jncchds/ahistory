@@ -20,13 +20,19 @@ public sealed record KnownFact(string Id, string Subject, string Predicate, stri
 /// The unit of extraction (§6.3), and the boundary every citation is checked against: a message id
 /// that is not in here is a hallucination or a mistake, and either way it does not get written.
 /// </remarks>
+/// <param name="OwnerIsSelf">
+/// False for a save built from someone else's archive (spec §9), where what others said about a
+/// person is not recorded: the depth that feels insightful about yourself reads very differently
+/// pointed at someone who did not ask.
+/// </param>
 public sealed record ExtractionWindow(
     string SessionId,
     string ThreadId,
     bool IsGroup,
     IReadOnlyList<WindowPerson> People,
     IReadOnlyList<WindowMessage> Messages,
-    IReadOnlyList<KnownFact> Known)
+    IReadOnlyList<KnownFact> Known,
+    bool OwnerIsSelf = true)
 {
     /// <summary>Every message id that may be cited.</summary>
     public HashSet<long> CitableIds { get; } = [.. Messages.Select(m => m.Id)];
@@ -86,11 +92,12 @@ public sealed class ExtractionWindows(Database database)
 
         string threadId;
         bool isGroup;
+        bool ownerIsSelf;
 
         using (var command = connection.CreateCommand())
         {
             command.CommandText = """
-                SELECT t.id, t.kind, t.ai_excluded, coalesce(sm.ai_opt_out, 0)
+                SELECT t.id, t.kind, t.ai_excluded, coalesce(sm.ai_opt_out, 0), coalesce(sm.owner_is_self, 1)
                 FROM session AS s
                 JOIN thread AS t ON t.id = s.thread_id
                 LEFT JOIN save_meta AS sm ON sm.id = 1
@@ -115,6 +122,7 @@ public sealed class ExtractionWindows(Database database)
 
             threadId = reader.GetString(0);
             isGroup = reader.GetString(1) != "dm";
+            ownerIsSelf = reader.GetInt64(4) == 1;
         }
 
         // A direct conversation with someone left out is not read at all. Taking them off the
@@ -142,7 +150,8 @@ public sealed class ExtractionWindows(Database database)
                 IsGroup: isGroup,
                 People: people,
                 Messages: messages,
-                Known: KnownFacts(connection, people));
+                Known: KnownFacts(connection, people),
+                OwnerIsSelf: ownerIsSelf);
     }
 
     private static bool HasSomeoneLeftOut(Microsoft.Data.Sqlite.SqliteConnection connection, string threadId)
@@ -260,6 +269,7 @@ public sealed class ExtractionWindows(Database database)
             FROM fact AS f
             WHERE f.subject_person_id IN ({ids})
               AND f.superseded_by IS NULL
+              AND f.merged_into IS NULL
               AND f.retracted_utc IS NULL
               AND f.source <> 'user_deleted'
             ORDER BY f.confidence DESC

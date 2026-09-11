@@ -49,10 +49,15 @@ public sealed class UpgradeWindowTests
             ALTER TABLE save_meta DROP COLUMN ai_opt_out;
             ALTER TABLE session DROP COLUMN is_substantive;
             ALTER TABLE session DROP COLUMN filter_version;
+            DROP TABLE embedding;
+            DROP TABLE fact_pair_verdict;
+            DROP INDEX ix_fact_merged;
+            DROP INDEX ix_artifact_media;
+            ALTER TABLE fact DROP COLUMN merged_into;
             DELETE FROM schema_migration
             WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
                            '006_ai_interaction.sql', '007_ai_jobs.sql',
-                           '008_facts.sql');
+                           '008_facts.sql', '009_ai_complete.sql');
             """;
         command.ExecuteNonQuery();
     }

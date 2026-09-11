@@ -165,6 +165,27 @@ public sealed partial class ToolDispatcher(ExtractionWindow window)
             return new ToolReply(false, "valid_from is after valid_to.");
         }
 
+        // A correction round resends what was refused — and a model often resends what was
+        // accepted along with it. The same fact from the same messages twice in one run is one
+        // fact; the same fact from other messages is more evidence, and is kept.
+        if (Facts.Any(f => f.SupersedesFactId is null
+                           && f.SubjectPersonId == personId
+                           && f.SubjectPair == pair
+                           && f.Predicate == predicate
+                           && string.Equals(f.ObjectText, objectText, StringComparison.OrdinalIgnoreCase)
+                           && f.Citations.Where(c => c.Role == "asserts").Select(c => c.MessageId)
+                               .SequenceEqual(citations.Select(c => c.MessageId))))
+        {
+            return new ToolReply(true, "Already recorded.");
+        }
+
+        var evidence = EvidenceKind(personId, pair, citations);
+
+        if (Reflected(evidence) is { } refusal)
+        {
+            return refusal;
+        }
+
         var all = citations.ToList();
 
         if (validFrom is { } from)
@@ -185,7 +206,7 @@ public sealed partial class ToolDispatcher(ExtractionWindow window)
             ObjectText = objectText,
             ClaimText = claim,
             Confidence = confidence,
-            EvidenceKind = EvidenceKind(personId, pair, citations),
+            EvidenceKind = evidence,
             OriginKind = _window.IsGroup ? "group" : "dm",
             ValidFromUtc = validFrom?.Utc,
             ValidToUtc = validTo?.Utc,
@@ -223,6 +244,13 @@ public sealed partial class ToolDispatcher(ExtractionWindow window)
             return new ToolReply(false, error);
         }
 
+        var evidence = EvidenceKind(known.Subject, null, citations);
+
+        if (Reflected(evidence) is { } refusal)
+        {
+            return refusal;
+        }
+
         var all = citations.ToList();
 
         if (validFrom is { } from)
@@ -237,7 +265,7 @@ public sealed partial class ToolDispatcher(ExtractionWindow window)
             ObjectText = objectText,
             ClaimText = claim,
             Confidence = confidence,
-            EvidenceKind = EvidenceKind(known.Subject, null, citations),
+            EvidenceKind = evidence,
             OriginKind = _window.IsGroup ? "group" : "dm",
             ValidFromUtc = validFrom?.Utc,
             SupersedesFactId = factId,
@@ -304,6 +332,22 @@ public sealed partial class ToolDispatcher(ExtractionWindow window)
 
         return subjectSpoke ? "self_report" : "reflected";
     }
+
+    /// <summary>
+    /// Refuses reflected evidence in a save that is someone else's archive (spec §9).
+    /// </summary>
+    /// <remarks>
+    /// Checked here rather than asked of the prompt, which is pinned and shared by every save: a
+    /// refusal the model reads while it can still correct itself teaches it the rule for this
+    /// archive, and holds whatever the model makes of it.
+    /// </remarks>
+    private ToolReply? Reflected(string evidence) =>
+        !_window.OwnerIsSelf && evidence == "reflected"
+            ? new ToolReply(
+                false,
+                "This archive belongs to someone other than the person using it, so only what people "
+                + "said about themselves is recorded. Leave this one out.")
+            : null;
 
     private bool Subject(
         JsonElement arguments,

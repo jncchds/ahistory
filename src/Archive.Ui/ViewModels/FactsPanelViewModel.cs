@@ -219,6 +219,31 @@ public sealed partial class FactsPanelViewModel : ObservableObject
 
     internal void Reveal(long messageId) => RevealRequested?.Invoke(this, messageId);
 
+    /// <summary>
+    /// The sessions among these that a model has yet to read — nothing at all while AI is off.
+    /// </summary>
+    public async Task<IReadOnlySet<string>> UnreadAsync(IReadOnlyCollection<string> sessionIds)
+    {
+        ArgumentNullException.ThrowIfNull(sessionIds);
+
+        if (!IsAvailable || sessionIds.Count == 0)
+        {
+            return new HashSet<string>();
+        }
+
+        try
+        {
+            return await Task.Run(() => _coverage.Unread(sessionIds)).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            // A mark in the margin is not worth failing a conversation over.
+            _log.LogWarning(ex, "Could not work out which sessions are unread.");
+
+            return new HashSet<string>();
+        }
+    }
+
     internal Task EditAsync(FactItem item, string objectText, string claimText) =>
         Pending = GuardAsync(async () =>
         {

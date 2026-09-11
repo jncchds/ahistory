@@ -14,6 +14,12 @@ public enum AiJobKind
     Rollup,
     Diary,
     Embed,
+
+    /// <summary>Speech in a voice or video message to text (A7).</summary>
+    Transcribe,
+
+    /// <summary>The text in an image, copied out (A7).</summary>
+    Ocr,
 }
 
 /// <summary>Where a job has got to.</summary>
@@ -254,6 +260,34 @@ public sealed class AiJobs(Database database)
         return new AiJobCounts(pending, running, done, failed, review);
     }
 
+    /// <summary>
+    /// Puts every failed job back in the queue, with its attempts reset.
+    /// </summary>
+    /// <remarks>
+    /// Failed is visible, not final. A job that ran out of attempts on something the endpoint got
+    /// over — found against a local server that refused concurrent calls now and then — would
+    /// otherwise stay failed for good: asking for the same work again finds the job it already
+    /// has, at the same inputs, and leaves it where it is. This is the user's way of saying "try
+    /// those again", and it is a button rather than a timer so a job failing for a real reason is
+    /// not retried forever.
+    /// </remarks>
+    /// <returns>How many were put back.</returns>
+    public int RetryFailed()
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            UPDATE ai_job
+            SET state = 'pending', attempts = 0, lease_utc = NULL, last_error_kind = NULL, updated_utc = $now
+            WHERE state = 'failed';
+            """;
+
+        command.Parameters.AddWithValue("$now", Now());
+
+        return command.ExecuteNonQuery();
+    }
+
     /// <summary>Empties the queue. Part of forgetting everything the AI layer produced.</summary>
     public void Clear()
     {
@@ -314,7 +348,9 @@ public sealed class AiJobs(Database database)
         AiJobKind.Adjudicate => "adjudicate",
         AiJobKind.Rollup => "rollup",
         AiJobKind.Diary => "diary",
-        _ => "embed",
+        AiJobKind.Embed => "embed",
+        AiJobKind.Transcribe => "transcribe",
+        _ => "ocr",
     };
 
     private static AiJobKind ParseKind(string stored) => stored switch
@@ -324,7 +360,9 @@ public sealed class AiJobs(Database database)
         "adjudicate" => AiJobKind.Adjudicate,
         "rollup" => AiJobKind.Rollup,
         "diary" => AiJobKind.Diary,
-        _ => AiJobKind.Embed,
+        "embed" => AiJobKind.Embed,
+        "transcribe" => AiJobKind.Transcribe,
+        _ => AiJobKind.Ocr,
     };
 
     private static AiJobState ParseState(string stored) => stored switch
