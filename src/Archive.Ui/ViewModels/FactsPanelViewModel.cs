@@ -129,16 +129,22 @@ public sealed partial class FactsPanelViewModel : ObservableObject
     private readonly AiCoverage _coverage;
     private readonly AiState _state;
     private readonly ILogger _log;
+    private readonly AiExclusions? _exclusions;
 
     private string? _personId;
 
     public FactsPanelViewModel(
-        FactStore store, AiCoverage coverage, AiState state, ILogger<FactsPanelViewModel>? logger = null)
+        FactStore store,
+        AiCoverage coverage,
+        AiState state,
+        AiExclusions? exclusions = null,
+        ILogger<FactsPanelViewModel>? logger = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _coverage = coverage ?? throw new ArgumentNullException(nameof(coverage));
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _log = logger ?? NullLogger<FactsPanelViewModel>.Instance;
+        _exclusions = exclusions;
 
         _state.Changed += (_, _) =>
         {
@@ -168,6 +174,37 @@ public sealed partial class FactsPanelViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _error;
+
+    /// <summary>This person's correspondence is not read by a model, nor sent anywhere.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExclusionLabel))]
+    private bool _isExcluded;
+
+    public bool CanExclude => _exclusions is not null;
+
+    public string ExclusionLabel => IsExcluded ? "Include in AI reading" : "Leave out of AI reading";
+
+    /// <summary>
+    /// Leaves this person out, or lets them back in.
+    /// </summary>
+    /// <remarks>
+    /// A button rather than a checkbox bound both ways: loading the panel sets the flag from the
+    /// save, and a two-way binding would write that straight back as though the user had clicked.
+    /// </remarks>
+    [RelayCommand]
+    private Task ToggleExclusion() => Pending = GuardAsync(async () =>
+    {
+        if (_exclusions is null || _personId is null)
+        {
+            return;
+        }
+
+        var personId = _personId;
+        var excluded = !IsExcluded;
+
+        await Task.Run(() => _exclusions.Set(personId, excluded)).ConfigureAwait(true);
+        await LoadAsync(personId).ConfigureAwait(true);
+    });
 
     /// <summary>Loads what is known about a person, or clears the panel for nobody.</summary>
     public Task ShowAsync(string? personId)
@@ -215,6 +252,8 @@ public sealed partial class FactsPanelViewModel : ObservableObject
 
         var facts = await Task.Run(() => _store.ForPerson(personId)).ConfigureAwait(true);
         var coverage = await Task.Run(() => _coverage.ForPerson(personId)).ConfigureAwait(true);
+        var excluded = _exclusions is not null
+            && await Task.Run(() => _exclusions.IsExcluded(personId)).ConfigureAwait(true);
 
         // The person changed while this was loading; what arrived belongs to someone else.
         if (personId != _personId)
@@ -227,7 +266,11 @@ public sealed partial class FactsPanelViewModel : ObservableObject
             Facts.Add(new FactItem(fact, this));
         }
 
-        CoverageLine = coverage.Substantive == 0
+        IsExcluded = excluded;
+
+        CoverageLine = excluded
+            ? "Left out: nothing they wrote is read by a model or sent anywhere."
+            : coverage.Substantive == 0
             ? "None of these conversations looked worth reading closely."
             : $"{coverage.Extracted:N0} of {coverage.Substantive:N0} conversation(s) worth reading have been read.";
 

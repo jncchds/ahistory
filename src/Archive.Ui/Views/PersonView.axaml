@@ -167,6 +167,9 @@
         <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,10">
           <TextBlock Text="What is known" FontWeight="SemiBold" />
           <TextBlock Classes="faint" TextWrapping="Wrap" Text="{Binding Facts.CoverageLine}" />
+          <Button Content="{Binding Facts.ExclusionLabel}" FontSize="11" Padding="8,2" Margin="0,4,0,0"
+                  IsVisible="{Binding Facts.CanExclude, FallbackValue=False}"
+                  Command="{Binding Facts.ToggleExclusionCommand}" />
         </StackPanel>
 
         <TextBlock DockPanel.Dock="Bottom" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"

@@ -30,6 +30,8 @@ public static class AiServiceCollectionExtensions
         services.AddSingleton<ExtractionWindows>();
         services.AddSingleton<FactWriter>();
         services.AddSingleton<FactStore>();
+        services.AddSingleton<AiExclusions>();
+        services.AddSingleton<AiForget>();
         services.AddSingleton<ExtractRunner>();
         services.AddSingleton<IAiJobHandler, ExtractJobHandler>();
         services.AddSingleton<AiRunner>();

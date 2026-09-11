@@ -480,6 +480,42 @@ public sealed class AiPageTests : IDisposable
         Assert.Equal(600, new AiSettingsViewModel(state, Client(save), new AiConnectionCheck(Client(save))).TimeoutSeconds);
     }
 
+    /// <summary>
+    /// Forgetting needs the word typed, and then takes everything the AI layer produced.
+    /// </summary>
+    [Fact]
+    public async Task Forgetting_everything_waits_for_the_word_and_then_forgets()
+    {
+        using var save = new TempSave();
+        OneUnreadSession(save);
+
+        var state = State();
+        var jobs = new AiJobs(save.Database);
+        var runner = new AiRunner(jobs, state, []);
+        var page = new AiSettingsViewModel(
+            state, Client(save), new AiConnectionCheck(Client(save)), new AiForget(save.Database), runner);
+
+        await page.RefreshAsync();
+
+        Assert.True(page.CanOfferForget);
+        Assert.True(page.HasSomethingToForget);
+        Assert.False(page.CanForget);
+
+        page.ForgetConfirmation = "yes";
+        Assert.False(page.CanForget);
+
+        page.ForgetConfirmation = " Forget ";
+        Assert.True(page.CanForget);
+
+        await page.ForgetEverythingCommand.ExecuteAsync(null);
+        await page.Pending;
+
+        Assert.False(page.HasSomethingToForget);
+        Assert.Equal(string.Empty, page.ForgetConfirmation);
+        Assert.Contains("Forgotten", page.Status, StringComparison.Ordinal);
+        Assert.True(new AiForget(save.Database).Counts().IsEmpty);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

@@ -29,7 +29,9 @@ replaces it is the same principle expressed as behaviour, which is what was actu
 And P6: a log records counts, ids, durations and error types. The AI layer talks to a network
 service about the user's correspondence — it is the most tempting place in the codebase to log a
 prompt, and the one place where doing so puts private text into a file people attach to bug
-reports. `LoggingPrivacyTests` gets an AI case.
+reports. `AiLoggingPrivacyTests` runs extraction against an endpoint that fails and one that
+misbehaves, and fails if any word anyone wrote — or anything the endpoint said back — reaches the
+log.
 
 ---
 
@@ -560,6 +562,13 @@ Start button hidden while it "runs" left no way to give the answer.
   inference is off by default. The depth that feels insightful about yourself reads very differently
   pointed at someone who did not ask.
 
+**As built:** leaving a person out is a button in the facts panel. Their direct conversations are
+never queued or read, and their lines are dropped from any group transcript before it is sent, so
+nothing they wrote leaves the machine; letting them back in re-queues what was skipped. The first
+version only took them off the roster, which would still have sent their direct conversations —
+caught while building the button. Thread exclusion and the per-save opt-out are honoured but have
+no control yet, and the third-party default is not built.
+
 ### 11.4 Forget everything
 
 One action that deletes every derived row — artifacts, facts, citations, embeddings, jobs,
@@ -574,6 +583,11 @@ discard a week of processing, and an OK button is one misplaced click.
 Narrower forms sit beside it and need only a normal confirmation, because they are recoverable by
 re-running: this person only, embeddings only, statistics only, the vectors of an unused model.
 Deletion runs in one transaction.
+
+**As built:** forgetting everything is on the AI page — there even with AI switched off, which is
+when someone most wants it — with the counts in front of the person and the word typed. Settings,
+consent and exclusions are kept: they are the user's choices, not the model's output. Of the
+narrower forms, only clearing statistics exists.
 
 ---
 

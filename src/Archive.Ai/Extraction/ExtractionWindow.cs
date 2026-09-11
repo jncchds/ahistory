@@ -117,6 +117,13 @@ public sealed class ExtractionWindows(Database database)
             isGroup = reader.GetString(1) != "dm";
         }
 
+        // A direct conversation with someone left out is not read at all. Taking them off the
+        // roster is not enough: their messages would still be the transcript, and still be sent.
+        if (!isGroup && HasSomeoneLeftOut(connection, threadId))
+        {
+            return null;
+        }
+
         var people = People(connection, threadId);
 
         if (people.Count == 0)
@@ -136,6 +143,24 @@ public sealed class ExtractionWindows(Database database)
                 People: people,
                 Messages: messages,
                 Known: KnownFacts(connection, people));
+    }
+
+    private static bool HasSomeoneLeftOut(Microsoft.Data.Sqlite.SqliteConnection connection, string threadId)
+    {
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM thread_participant AS tp
+                JOIN identity_person AS ip ON ip.identity_id = tp.identity_id
+                JOIN person AS p ON p.id = ip.person_id
+                WHERE tp.thread_id = $thread AND p.ai_excluded = 1);
+            """;
+
+        command.Parameters.AddWithValue("$thread", threadId);
+
+        return command.ExecuteScalar() is long found && found == 1;
     }
 
     private static List<WindowPerson> People(Microsoft.Data.Sqlite.SqliteConnection connection, string threadId)
@@ -183,6 +208,8 @@ public sealed class ExtractionWindows(Database database)
             LEFT JOIN identity_person AS ip ON ip.identity_id = i.id
             LEFT JOIN person AS p ON p.id = ip.person_id
             WHERE m.session_id = $session AND m.kind = 'message' AND m.is_deleted = 0
+              -- In a group, the lines of someone left out are dropped before anything is sent.
+              AND (p.id IS NULL OR p.ai_excluded = 0)
             ORDER BY m.sent_at_unix, m.id;
             """;
 

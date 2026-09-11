@@ -247,6 +247,33 @@ public sealed class FactsPanelTests : IDisposable
         Assert.Single(panel.Facts);
     }
 
+    /// <summary>Leaving someone out is one button, and the panel says what it means.</summary>
+    [Fact]
+    public async Task A_person_can_be_left_out_and_let_back_in_from_the_panel()
+    {
+        using var save = new TempSave();
+        Seed(save);
+
+        var panel = new FactsPanelViewModel(
+            new FactStore(save.Database), new AiCoverage(save.Database), Enabled(), new AiExclusions(save.Database));
+
+        await panel.ShowAsync("p_sam");
+
+        Assert.True(panel.CanExclude);
+        Assert.Equal("Leave out of AI reading", panel.ExclusionLabel);
+
+        await panel.ToggleExclusionCommand.ExecuteAsync(null);
+
+        Assert.True(panel.IsExcluded);
+        Assert.Contains("Left out", panel.CoverageLine, StringComparison.Ordinal);
+        Assert.True(new AiExclusions(save.Database).IsExcluded("p_sam"));
+
+        await panel.ToggleExclusionCommand.ExecuteAsync(null);
+
+        Assert.False(panel.IsExcluded);
+        Assert.False(new AiExclusions(save.Database).IsExcluded("p_sam"));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

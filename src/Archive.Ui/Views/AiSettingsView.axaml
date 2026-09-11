@@ -125,6 +125,22 @@
       <TextBlock Classes="faint" TextWrapping="Wrap"
                  Text="{Binding SettingsPath, StringFormat='Settings file: {0}'}" />
 
+      <!-- §11.4: what makes switching AI on a decision someone can take back. Typed, not clicked. -->
+      <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,8"
+              IsVisible="{Binding CanOfferForget}" />
+
+      <StackPanel Spacing="8" IsVisible="{Binding CanOfferForget}">
+        <TextBlock Text="Forget everything the AI produced in this archive" FontWeight="SemiBold" />
+        <TextBlock Classes="subtle" TextWrapping="Wrap" Text="{Binding ForgetSummary}" />
+        <TextBlock Classes="faint" TextWrapping="Wrap"
+                   Text="This cannot be undone. Settings, consent and the people you left out are kept. Type forget to confirm." />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBox Width="160" Text="{Binding ForgetConfirmation}" PlaceholderText="forget" />
+          <Button Content="Forget everything" Command="{Binding ForgetEverythingCommand}"
+                  IsEnabled="{Binding CanForget}" />
+        </StackPanel>
+      </StackPanel>
+
     </StackPanel>
   </ScrollViewer>
 

@@ -134,6 +134,13 @@ public sealed class AiWork(Database database, AiJobs jobs, SessionSegmenter segm
             WHERE s.is_substantive = 1
               AND s.segmenter_version = $segmenter
               AND t.ai_excluded = 0
+              AND NOT EXISTS (SELECT 1 FROM save_meta WHERE ai_opt_out = 1)
+              AND NOT (t.kind = 'dm' AND EXISTS (
+                  SELECT 1
+                  FROM thread_participant AS tp
+                  JOIN identity_person AS ip ON ip.identity_id = tp.identity_id
+                  JOIN person AS p ON p.id = ip.person_id
+                  WHERE tp.thread_id = t.id AND p.ai_excluded = 1))
               AND NOT EXISTS (
                   SELECT 1 FROM derived_artifact AS d
                   WHERE d.source_session_id = s.id

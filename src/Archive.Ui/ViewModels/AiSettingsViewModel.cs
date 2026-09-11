@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Archive.Ai;
+using Archive.Ai.Jobs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -46,11 +47,15 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
     private readonly AiState _state;
     private readonly AiClient _client;
     private readonly AiConnectionCheck _check;
+    private readonly AiForget? _forget;
+    private readonly AiRunner? _runner;
 
     public AiSettingsViewModel(
         AiState state,
         AiClient client,
         AiConnectionCheck check,
+        AiForget? forget = null,
+        AiRunner? runner = null,
         ILogger<AiSettingsViewModel>? logger = null)
         : base(logger)
     {
@@ -59,6 +64,8 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
         _state = state;
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _check = check ?? throw new ArgumentNullException(nameof(check));
+        _forget = forget;
+        _runner = runner;
 
         Load(state.Current);
     }
@@ -220,6 +227,84 @@ public sealed partial class AiSettingsViewModel : ViewModelBase
 
         return Task.CompletedTask;
     });
+
+    /// <summary>The word that has to be typed before everything is forgotten.</summary>
+    public const string ForgetWord = "forget";
+
+    /// <summary>
+    /// Whether the page can offer to forget.
+    /// </summary>
+    /// <remarks>
+    /// On this page, and not on the activity page, because this one is there with AI switched off —
+    /// which is exactly when someone is most likely to want everything it produced gone.
+    /// </remarks>
+    public bool CanOfferForget => _forget is not null;
+
+    [ObservableProperty]
+    private string _forgetSummary = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanForget))]
+    private string _forgetConfirmation = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanForget))]
+    private bool _hasSomethingToForget;
+
+    /// <summary>
+    /// Typed, not clicked (ai-plan.md §11.4).
+    /// </summary>
+    /// <remarks>
+    /// An OK button is one misplaced click, and this discards what may be days of reading.
+    /// </remarks>
+    public bool CanForget =>
+        HasSomethingToForget
+        && string.Equals(ForgetConfirmation.Trim(), ForgetWord, StringComparison.OrdinalIgnoreCase);
+
+    public override Task RefreshAsync() => RunAsync(LoadForgetCountsAsync);
+
+    [RelayCommand]
+    private Task ForgetEverything() => Pending = RunAsync(async () =>
+    {
+        if (_forget is null || !CanForget)
+        {
+            throw new InvalidOperationException($"Type \"{ForgetWord}\" to confirm.");
+        }
+
+        // Stopped first, so nothing is written back into what is being cleared.
+        if (_runner is not null)
+        {
+            await _runner.PauseAsync().ConfigureAwait(true);
+        }
+
+        var removed = await Task.Run(_forget.Everything).ConfigureAwait(true);
+
+        ForgetConfirmation = string.Empty;
+        Status = $"Forgotten: {removed.Facts:N0} fact(s), {removed.Sessions:N0} session(s) and "
+            + $"{removed.Calls:N0} recorded call(s). Every message is exactly as it was."
+            + (_state.Current.Enabled
+                ? " AI is still on, so the archive will be read again the next time work is looked for."
+                : string.Empty);
+        StatusIsGood = true;
+
+        await LoadForgetCountsAsync().ConfigureAwait(true);
+    });
+
+    private async Task LoadForgetCountsAsync()
+    {
+        if (_forget is null)
+        {
+            return;
+        }
+
+        var counts = await Task.Run(_forget.Counts).ConfigureAwait(true);
+
+        HasSomethingToForget = !counts.IsEmpty;
+        ForgetSummary = counts.IsEmpty
+            ? "Nothing to forget: the AI layer has produced nothing in this archive."
+            : $"{counts.Facts:N0} fact(s), {counts.Sessions:N0} session(s), {counts.Calls:N0} recorded "
+              + $"call(s) and {counts.Jobs:N0} queued job(s). Every message, media file and search stays.";
+    }
 
     /// <summary>Puts the form back to what is stored, discarding edits.</summary>
     [RelayCommand]
