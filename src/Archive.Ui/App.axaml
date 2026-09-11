@@ -92,6 +92,21 @@
       <Setter Property="BorderThickness" Value="1.5" />
     </Style>
 
+    <!-- A message the platform deleted and the archive kept (P2). A badge in words, in the
+         warning colour, and the bubble itself untouched: fading it would read as "partly gone"
+         when every word of it is still here. -->
+    <Style Selector="Border.deletedBadge">
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+    </Style>
+
+    <Style Selector="Border.deletedBadge > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+    </Style>
+
     <!-- Conversation and people lists: flat rows, accent selection, no Fluent chrome. -->
     <Style Selector="ListBox.rows">
       <Setter Property="Background" Value="Transparent" />

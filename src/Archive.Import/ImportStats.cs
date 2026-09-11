@@ -21,8 +21,12 @@ public sealed record ImportStats
     public long MediaMissing { get; set; }
     public long MediaNotFound { get; set; }
 
+    /// <summary>Stored messages the platform reported deleted during this run. Kept, and marked (P2).</summary>
+    public long MessagesDeleted { get; set; }
+
     public override string ToString() =>
         $"seen {MessagesSeen}, inserted {MessagesInserted}, skipped {MessagesSkipped}, "
         + $"revised {MessagesRevised}, threads +{ThreadsNew}, identities +{IdentitiesNew}, "
-        + $"media stored {MediaStored} / deduped {MediaDeduplicated} / missing {MediaMissing}";
+        + $"media stored {MediaStored} / deduped {MediaDeduplicated} / missing {MediaMissing}"
+        + (MessagesDeleted > 0 ? $", deleted on the platform {MessagesDeleted}" : string.Empty);
 }

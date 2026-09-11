@@ -43,6 +43,11 @@
             <TextBlock Classes="faint" IsVisible="{Binding Row.MediaCount}"
                        Text="{Binding Row.MediaCount, StringFormat='{}{0} attachment(s)'}" />
 
+            <!-- P2: the platform deleted it, the archive did not. -->
+            <Border Classes="deletedBadge" IsVisible="{Binding IsDeletedOnPlatform}">
+              <TextBlock FontSize="10" Text="{Binding DeletedLabel}" />
+            </Border>
+
             <TextBlock Classes="faint" HorizontalAlignment="Right" Text="{Binding Timestamp}" />
 
           </StackPanel>

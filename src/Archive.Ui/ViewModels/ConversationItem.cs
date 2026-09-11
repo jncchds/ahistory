@@ -79,6 +79,12 @@ public sealed partial class MessageItem(PersonMessageRow row, Func<long, Task<IR
     /// </remarks>
     public bool ShowsThreadLabel => Row.IsFromGroup;
 
+    /// <summary>The platform has deleted this message; the archive kept it (P2).</summary>
+    public bool IsDeletedOnPlatform => Row.IsDeletedOnPlatform;
+
+    public string DeletedLabel =>
+        Row.DeletedObservedUtc is { } observed ? PlatformNames.DeletedLabel(Row.ThreadId, observed) : string.Empty;
+
     /// <summary>
     /// The room this was said in, for a group line.
     /// </summary>

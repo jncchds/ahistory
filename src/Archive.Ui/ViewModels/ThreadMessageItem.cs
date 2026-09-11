@@ -24,6 +24,12 @@ public sealed record ThreadMessageItem(MessageRow Row, bool ShowsSender, bool Sh
 
     public bool IsService => Row.Kind == "service";
 
+    /// <summary>The platform has deleted this message; the archive kept it (P2).</summary>
+    public bool IsDeletedOnPlatform => Row.IsDeletedOnPlatform;
+
+    public string DeletedLabel =>
+        Row.DeletedObservedUtc is { } observed ? PlatformNames.DeletedLabel(Row.ThreadId, observed) : string.Empty;
+
     /// <summary>
     /// A readable time, not the stored ISO string.
     /// </summary>

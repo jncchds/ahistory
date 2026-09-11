@@ -92,7 +92,12 @@ public sealed class ImportCommitter : IDisposable
             ("$version", ImporterVersion),
             ("$started", _nowUtc));
 
-        Begin();
+        // Committed now rather than left open for the first batch. A transaction is opened by the
+        // first write that needs one and closed by the checkpoint after it, so none is ever open
+        // while nothing is being written — a connector spends most of its life waiting on the
+        // network, and a write transaction held across that wait stalls every other writer in the
+        // app (the same reason P1 forbids holding one across a model call).
+        Checkpoint();
     }
 
     public string Platform { get; }
@@ -402,16 +407,25 @@ public sealed class ImportCommitter : IDisposable
     }
 
     /// <summary>Flushes the current batch. Reads are never blocked for longer than one batch.</summary>
+    /// <remarks>
+    /// Leaves no transaction open. The next write opens one; until then another writer — the AI
+    /// runner, a second import — is free to go.
+    /// </remarks>
     public void Checkpoint()
     {
         _transaction?.Commit();
         _transaction?.Dispose();
         _transaction = null;
         _pendingInBatch = 0;
-        Begin();
     }
 
-    public void Complete()
+    /// <summary>Marks the run finished.</summary>
+    /// <param name="optimize">
+    /// Whether to merge the search index and refresh the planner's statistics. Right after a bulk
+    /// import, and far too heavy after every page a connector commits: a live session calls this
+    /// with false and optimizes once, when it ends.
+    /// </param>
+    public void Complete(bool optimize = true)
     {
         Checkpoint();
 
@@ -426,10 +440,73 @@ public sealed class ImportCommitter : IDisposable
 
         Checkpoint();
 
+        if (!optimize)
+        {
+            return;
+        }
+
         // FTS5 leaves many small b-tree segments after a bulk insert; merging them keeps the
         // first search after an import from paying for the whole import.
         Execute("INSERT INTO search_fts (search_fts) VALUES ('optimize');");
         Execute("ANALYZE;");
+
+        // Committed explicitly. These used to run in the transaction the checkpoint above had
+        // just opened, which Dispose then rolled back — so the optimize never actually happened.
+        Checkpoint();
+    }
+
+    /// <summary>
+    /// Records that the platform has deleted a stored message. The message itself is kept (P2).
+    /// </summary>
+    /// <returns>
+    /// True when this is news: the message is in the archive and was not already known to be
+    /// deleted. A deletion for a message the archive never had — a chat that was not included, a
+    /// message older than anything read — is nothing to record.
+    /// </returns>
+    public bool MarkDeleted(string uid)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uid);
+
+        // The WHERE is what lets SQLite parse ON CONFLICT after a SELECT; without one it reads
+        // ON as the start of a join.
+        var inserted = Execute("""
+            INSERT INTO message_deletion (message_id, source_id, observed_import_id, observed_utc)
+            SELECT id, $source, $import, $now FROM message WHERE uid = $uid
+            ON CONFLICT (message_id) DO NOTHING;
+            """,
+            ("$uid", uid),
+            ("$source", SourceId),
+            ("$import", _importId),
+            ("$now", DateTimeOffset.UtcNow.ToString("O")));
+
+        if (inserted > 0)
+        {
+            Stats.MessagesDeleted++;
+        }
+
+        return inserted > 0;
+    }
+
+    /// <summary>Records how far this source has been read, in the batch being written.</summary>
+    /// <remarks>
+    /// Deliberately in the same transaction as the messages it describes, which is why it lives
+    /// here rather than in the connector: a cursor committed before its page skips that page for
+    /// ever if the app dies in between.
+    /// </remarks>
+    public void SetSyncState(string scope, string cursor)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scope);
+        ArgumentNullException.ThrowIfNull(cursor);
+
+        Execute("""
+            INSERT INTO sync_state (source_id, scope, cursor, updated_utc)
+            VALUES ($source, $scope, $cursor, $now)
+            ON CONFLICT (source_id, scope) DO UPDATE SET cursor = $cursor, updated_utc = $now;
+            """,
+            ("$source", SourceId),
+            ("$scope", scope),
+            ("$cursor", cursor),
+            ("$now", DateTimeOffset.UtcNow.ToString("O")));
     }
 
     public void Fail(string error)
@@ -507,7 +584,7 @@ public sealed class ImportCommitter : IDisposable
     private InsertedMessage ReconcileExisting(NormalizedMessage message)
     {
         using var select = NewCommand(
-            "SELECT id, content_hash, plaintext, entities_json, raw_json FROM message WHERE uid = $uid;");
+            "SELECT id, content_hash, plaintext, entities_json, raw_json, service_action FROM message WHERE uid = $uid;");
         Bind(select, ("$uid", message.Uid));
 
         long id;
@@ -515,6 +592,7 @@ public sealed class ImportCommitter : IDisposable
         string existingText;
         object existingEntities;
         object existingRaw;
+        string? existingAction;
 
         using (var reader = select.ExecuteReader())
         {
@@ -529,9 +607,11 @@ public sealed class ImportCommitter : IDisposable
             existingEntities = reader.IsDBNull(3) ? DBNull.Value : reader.GetString(3);
             // Compressed bytes now (RawJson), so it moves across as a blob rather than text.
             existingRaw = reader.IsDBNull(4) ? DBNull.Value : reader.GetFieldValue<byte[]>(4);
+            existingAction = reader.IsDBNull(5) ? null : reader.GetString(5);
         }
 
-        if (string.Equals(existingHash, message.ContentHash, StringComparison.Ordinal))
+        if (string.Equals(existingHash, message.ContentHash, StringComparison.Ordinal)
+            || SaysTheSameThing(existingText, existingEntities as string, existingAction, message))
         {
             return new InsertedMessage(id, WasInserted: false);
         }
@@ -564,6 +644,60 @@ public sealed class ImportCommitter : IDisposable
 
         Stats.MessagesRevised++;
         return new InsertedMessage(id, WasInserted: false, WasRevised: true);
+    }
+
+    /// <summary>
+    /// Whether a stored message and an incoming one differ only in how they were delivered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The content hash covers each attachment's path inside the export, which is right for one
+    /// route and wrong across two. A message read from Telegram's API and the same message read
+    /// from an export name their photo differently — <c>telegram:photo/…</c> against
+    /// <c>photos/photo_3@12-03-2021….jpg</c> — and a hash mismatch alone would record an edit
+    /// every time the two routes met, with identical text on both sides of it.
+    /// </para>
+    /// <para>
+    /// So an edit is a change to what was <em>said</em>: the text, its entities, or the service
+    /// action. Entities are compared as JSON values rather than as strings, because an export
+    /// keeps Telegram's own indentation and a connector does not. A different attachment path with
+    /// the same words is not an edit — and never was a useful one: the media rows it would have
+    /// revised are keyed by ordinal and were not being replaced anyway.
+    /// </para>
+    /// </remarks>
+    private static bool SaysTheSameThing(
+        string existingText, string? existingEntities, string? existingAction, NormalizedMessage incoming) =>
+        string.Equals(existingText, incoming.Plaintext, StringComparison.Ordinal)
+        && string.Equals(existingAction, incoming.ServiceAction, StringComparison.Ordinal)
+        && string.Equals(
+            CanonicalJson(existingEntities), CanonicalJson(incoming.EntitiesJson), StringComparison.Ordinal);
+
+    private static readonly JsonSerializerOptions Compact = new()
+    {
+        WriteIndented = false,
+
+        // Keeps Cyrillic and emoji as they are. The default encoder escapes them, which is
+        // harmless when both sides go through it and is only done here so the canonical form is
+        // readable when a comparison has to be debugged.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    /// <summary>JSON with its whitespace removed and nothing else changed, or the input if it is not JSON.</summary>
+    internal static string? CanonicalJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(json)?.ToJsonString(Compact);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
     }
 
     private void InsertMedia(long messageId, NormalizedMessage message, IReadOnlyList<StoredMedia?> stored)
@@ -654,10 +788,11 @@ public sealed class ImportCommitter : IDisposable
     private static string ParticipantKey(string threadId, string identityId) =>
         threadId + (char)31 + identityId;
 
-    private void Begin() => _transaction = _connection.BeginTransaction();
-
     private SqliteCommand NewCommand(string sql)
     {
+        // Opened by the first statement of a batch, never ahead of it (see Checkpoint).
+        _transaction ??= _connection.BeginTransaction();
+
         var command = _connection.CreateCommand();
         command.CommandText = sql;
         command.Transaction = _transaction;

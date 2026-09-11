@@ -54,10 +54,14 @@ public sealed class UpgradeWindowTests
             DROP INDEX ix_fact_merged;
             DROP INDEX ix_artifact_media;
             ALTER TABLE fact DROP COLUMN merged_into;
+            DROP TABLE message_deletion;
+            DROP TABLE sync_state;
+            DROP INDEX ix_sync_chat_decision;
+            DROP TABLE sync_chat;
             DELETE FROM schema_migration
             WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
                            '006_ai_interaction.sql', '007_ai_jobs.sql',
-                           '008_facts.sql', '009_ai_complete.sql');
+                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql');
             """;
         command.ExecuteNonQuery();
     }

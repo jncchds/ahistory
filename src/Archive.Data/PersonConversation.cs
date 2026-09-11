@@ -25,9 +25,16 @@ public sealed record PersonMessageRow(
     string Plaintext,
     string? EntitiesJson,
     long MediaCount,
-    string? SessionId = null)
+    string? SessionId = null,
+    string? DeletedObservedUtc = null)
 {
     public bool IsFromGroup => Origin == "group";
+
+    /// <summary>
+    /// The platform has since deleted this message. It is still here, because keeping it is the
+    /// point of an archive (P2); this is what lets the conversation say so.
+    /// </summary>
+    public bool IsDeletedOnPlatform => DeletedObservedUtc is not null;
 
     /// <summary>
     /// A name to put on the message.
@@ -270,7 +277,8 @@ public sealed class PersonConversation(Database database)
                 reader.GetString(11),
                 reader.IsDBNull(12) ? null : reader.GetString(12),
                 reader.GetInt64(13),
-                reader.IsDBNull(14) ? null : reader.GetString(14)));
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15)));
         }
 
         return messages;
@@ -371,7 +379,8 @@ public sealed class PersonConversation(Database database)
                i.display_name, ifnull(p.is_owner, 0), m.kind, m.service_action,
                m.sent_at_utc, m.sent_at_unix, m.plaintext, m.entities_json,
                (SELECT count(*) FROM message_media mm WHERE mm.message_id = m.id),
-               m.session_id
+               m.session_id,
+               (SELECT md.observed_utc FROM message_deletion md WHERE md.message_id = m.id)
         FROM message m
         LEFT JOIN thread t ON t.id = m.thread_id
         LEFT JOIN identity i ON i.id = m.sender_identity_id

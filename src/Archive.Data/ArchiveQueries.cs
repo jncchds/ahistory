@@ -100,8 +100,12 @@ public sealed record MessageRow(
     string Plaintext,
     string? EntitiesJson,
     long MediaCount,
-    string? SenderIdentityId = null)
+    string? SenderIdentityId = null,
+    string? DeletedObservedUtc = null)
 {
+    /// <summary>The platform has since deleted this message; the archive keeps it (P2).</summary>
+    public bool IsDeletedOnPlatform => DeletedObservedUtc is not null;
+
     /// <summary>
     /// A name to put on the message.
     /// </summary>
@@ -354,7 +358,8 @@ public sealed class ArchiveQueries(Database database)
                    ifnull(p.is_owner, 0), m.kind, m.service_action, m.sent_at_utc, m.sent_at_unix,
                    m.plaintext, m.entities_json,
                    (SELECT count(*) FROM message_media mm WHERE mm.message_id = m.id),
-                   m.sender_identity_id
+                   m.sender_identity_id,
+                   (SELECT md.observed_utc FROM message_deletion md WHERE md.message_id = m.id)
             FROM message m
             LEFT JOIN identity i ON i.id = m.sender_identity_id
             LEFT JOIN identity_person ip ON ip.identity_id = i.id
@@ -385,7 +390,8 @@ public sealed class ArchiveQueries(Database database)
                 reader.GetString(7), reader.GetInt64(8), reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.GetInt64(11),
-                reader.IsDBNull(12) ? null : reader.GetString(12)));
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13)));
         }
 
         // A short page means the end; a full one hands back a cursor even if the next page is

@@ -40,6 +40,7 @@ public sealed class MigrationTests
         ["007_ai_jobs.sql"] = "5494537321d717823cbfbd4bf18c8bf3c5b53fca2515e3c13665fa60f4829be8",
         ["008_facts.sql"] = "89409a7d224a2a237650005d5b6fc84ceea134a016494313000f9cca74cc561b",
         ["009_ai_complete.sql"] = "99bd5aedf4d9d8dbe028962f03ddca706c45f65edf6b835cf34056cb8ecbeba4",
+        ["010_sync.sql"] = "e0ed0a922af101cd08ed8b902b200b99183c3ae71285174178eea0ff458f3ca2",
     };
 
     /// <summary>
@@ -91,10 +92,10 @@ public sealed class MigrationTests
     [
         "ai_interaction", "ai_job", "embedding", "fact_pair_verdict",
         "derived_artifact", "fact", "fact_citation", "identity", "identity_person", "import",
-        "import_source", "media", "message", "message_media", "message_revision", "message_source",
-        "person", "person_edge", "reaction", "save_meta", "save_provenance", "schema_migration",
-        "search_document",
-        "session", "thread", "thread_participant",
+        "import_source", "media", "message", "message_deletion", "message_media", "message_revision",
+        "message_source", "person", "person_edge", "reaction", "save_meta", "save_provenance",
+        "schema_migration", "search_document",
+        "session", "sync_chat", "sync_state", "thread", "thread_participant",
     ];
 
     [Fact]
@@ -202,10 +203,14 @@ public sealed class MigrationTests
             DROP INDEX ix_fact_merged;
             DROP INDEX ix_artifact_media;
             ALTER TABLE fact DROP COLUMN merged_into;
+            DROP TABLE message_deletion;
+            DROP TABLE sync_state;
+            DROP INDEX ix_sync_chat_decision;
+            DROP TABLE sync_chat;
             DELETE FROM schema_migration
             WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
                            '006_ai_interaction.sql', '007_ai_jobs.sql',
-                           '008_facts.sql', '009_ai_complete.sql');
+                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql');
             """);
     }
 
@@ -224,7 +229,7 @@ public sealed class MigrationTests
         Assert.Equal(SchemaState.Behind, status.State);
         Assert.True(status.CanUpgrade);
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql"], status.Pending);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], status.Pending);
     }
 
     /// <summary>
@@ -243,7 +248,7 @@ public sealed class MigrationTests
         var error = Assert.Throws<SchemaUpgradeRequiredException>(() => db.Database.Migrate());
 
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql"], error.Pending);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], error.Pending);
         Assert.Equal(db.Database.DatabasePath, error.SavePath);
 
         // Still behind: asking must not be the same as doing.
@@ -260,7 +265,7 @@ public sealed class MigrationTests
         var applied = db.Database.Upgrade(backup);
 
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql"], applied);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], applied);
         Assert.Equal(SchemaState.UpToDate, db.Database.Inspect().State);
 
         // The copy is a database in its own right, still standing where the save did.
