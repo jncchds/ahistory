@@ -299,6 +299,36 @@ internal static class Exports
             .Attachment(WhatsAppStart.AddMinutes(3), "Owner Synthetic", "IMG-20210314-WA0001.jpg", seed: 32, caption: "the view")
             .Omitted(WhatsAppStart.AddMinutes(4), "+1 555 123 4567");
 
+    internal const string SkypeOwner = "8:live:owner";
+    internal const string SkypeSam = "8:live:sam";
+    internal const string SkypeAlex = "8:live:alex";
+    internal const string SkypeGroup = "19:abc123@thread.skype";
+
+    /// <summary>
+    /// A Skype export: a conversation with Sam — markup, a link, a call, an edit, a shared photo — a
+    /// group with an emoticon, a member added and a quote, and the two kinds of noise that are
+    /// skipped: a call-log feed and a notice.
+    /// </summary>
+    internal static SkypeExportBuilder Skype() =>
+        SkypeExportBuilder.New(SkypeOwner)
+            .Conversation(SkypeSam, "Sam Ruiz", c => c
+                .Message("1615757463001", At(1615757463), SkypeSam, "Sam Ruiz", "the harbour was <i>freezing</i> &amp; windy")
+                .Message("1615757523001", At(1615757523), SkypeOwner, null,
+                    "see <a href=\"https://example.org\">https://example.org</a>")
+                .Call("1615757583001", At(1615757583), SkypeSam, "Sam Ruiz")
+                .Message("1615757643001", At(1615757643), SkypeOwner, null, "train at 07:40", editedAt: At(1615757700))
+                .Picture("1615757703001", At(1615757703), SkypeSam, "IMG_0001.jpg")
+                .Message("1615757763001", At(1615757763), SkypeSam, "Sam Ruiz", "welcome", type: "Notice"))
+            .Conversation(SkypeGroup, "Prague trip", c => c
+                .Message("1615843863001", At(1615843863), SkypeAlex, "Alex Novak",
+                    "мы были в Праге весной <ss type=\"heart\">(heart)</ss>")
+                .AddMember("1615843900001", At(1615843900), SkypeOwner, SkypeAlex)
+                .Message("1615843960001", At(1615843960), "https://azwcus1-client-s.gateway.messenger.live.com/v1/users/ME/contacts/8:live:sam", "Sam Ruiz",
+                    $"<quote author=\"live:alex\" authorname=\"Alex Novak\" timestamp=\"1615843863\"><legacyquote>[14.03.2021 22:41:03] Alex Novak: </legacyquote>мы были в Праге весной<legacyquote>\n\n&lt;&lt;&lt; </legacyquote></quote>and again"),
+                topic: "Prague trip", members: [SkypeOwner, SkypeSam, SkypeAlex])
+            .Conversation("48:calllogs", "Call logs", c => c
+                .Call("1615757583002", At(1615757583), SkypeSam, "Sam Ruiz"));
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()

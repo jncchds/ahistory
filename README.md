@@ -86,6 +86,7 @@ something another person said.
 | **Telegram** | the folder containing `result.json` | Documented, and verified against real exports |
 | **Google Hangouts** | the Takeout folder containing `Hangouts.json` | Well known, and frozen — Hangouts shut down in 2022 |
 | **Google Chat** | the Takeout folder containing `Google Chat`, or the Takeout root | Built to Takeout's layout; not yet run against a real export |
+| **Skype** | the unpacked `.tar` from "Export files and chat history", containing `messages.json` | Built to the export as documented; real message ids, but shared files are linked rather than included |
 | **VKontakte** | the folder containing `messages` | Structure confirmed against an existing parser; VK's markup has changed over the years |
 | **QIP / QIP Infium** | a `History` folder of `.qhf` files | A closed binary format; reverse engineered, then corrected against real files |
 | **Facebook Messenger**, **Instagram** | the unpacked "download your information" folder, in JSON | Built to the documented layout; no message or account ids, so people are matched by name |

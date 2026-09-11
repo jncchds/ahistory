@@ -35,6 +35,8 @@ public sealed class NoArchiveDataInTheRepositoryTests
         "personal_information.json",
         // WhatsApp's iPhone export; the Android one is caught by name below.
         "_chat.txt",
+        // Skype's export, Google Chat's per-conversation file, and Discord's newer package.
+        "messages.json",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",
