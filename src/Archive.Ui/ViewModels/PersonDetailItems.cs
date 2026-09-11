@@ -57,6 +57,7 @@ public sealed partial class AccountItem : ObservableObject
     {
         "telegram" => "Telegram",
         "hangouts" => "Hangouts",
+        "googlechat" => "Google Chat",
         "vk" => "VK",
         "qip" => "QIP",
         var other => other,

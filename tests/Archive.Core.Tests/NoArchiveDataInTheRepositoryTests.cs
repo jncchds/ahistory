@@ -25,8 +25,10 @@ public sealed class NoArchiveDataInTheRepositoryTests
     [
         // Telegram Desktop, JSON export.
         "result.json",
-        // Google Takeout.
+        // Google Takeout: Hangouts, and Google Chat's per-conversation and per-account files.
         "Hangouts.json",
+        "group_info.json",
+        "user_info.json",
         // QIP history, and QIP's archived history.
         ".qhf",
         ".ahf",

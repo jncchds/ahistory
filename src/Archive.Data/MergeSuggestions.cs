@@ -191,6 +191,7 @@ public sealed class MergeSuggestions(Database database)
     {
         "telegram" => "Telegram",
         "hangouts" => "Google Hangouts",
+        "googlechat" => "Google Chat",
         "vk" => "VKontakte",
         "qip" => "QIP",
         var other => other,

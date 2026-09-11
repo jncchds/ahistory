@@ -207,6 +207,29 @@ internal static class Exports
                 name: "Prague trip");
     }
 
+    internal static GoogleChatUser ChatOwner { get; } = new("Owner Synthetic", "owner@example.com");
+
+    internal static GoogleChatUser ChatSam { get; } = new("Sam Ruiz", "Sam@Example.com");
+
+    internal static GoogleChatUser ChatMarina { get; } = new("Марина Коваль", "marina@example.com");
+
+    /// <summary>
+    /// A Google Chat Takeout: a DM with an attachment present on disk, and a named space with a
+    /// reaction.
+    /// </summary>
+    internal static GoogleChatExportBuilder GoogleChat(GoogleChatDateStyle style = GoogleChatDateStyle.MonthFirst) =>
+        GoogleChatExportBuilder.New(ChatOwner, style)
+            .Dm("abc123", [ChatOwner, ChatSam], g => g
+                .Message("abc123/t1/m1", At(1615757463), ChatSam, "the harbour was freezing")
+                .Message("abc123/t1/m2", At(1615757563), ChatOwner, "look", m => m
+                    .Attachment("harbour.jpg", "File-harbour.jpg")
+                    .Quotes("abc123/t1/m1"))
+                .File("File-harbour.jpg", seed: 7))
+            .Space("xyz789", "Prague trip", [ChatOwner, ChatSam, ChatMarina], g => g
+                .Message("xyz789/t2/m1", At(1615843863), ChatMarina, "мы были в Праге весной", m => m
+                    .Reaction("👍", "owner@example.com", "sam@example.com")
+                    .Edited(At(1615843900))));
+
     /// <summary>A VK archive: one conversation with a person, one with a multi-person chat.</summary>
     internal static VkExportBuilder Vk() =>
         VkExportBuilder.New()
