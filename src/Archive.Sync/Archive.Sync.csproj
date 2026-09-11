@@ -17,6 +17,20 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+
+    <!--
+      DPAPI, for the session file (SecretFile). Managed code with no native payload — it is a thin
+      wrapper over a Windows API that is present on every Windows machine, and on other platforms
+      the package is simply unused.
+    -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+
+    <!--
+      Telegram's client protocol, written in C# with no native binaries — so connecting an account
+      adds nothing per-platform to a build, which is the property D32 protects for the AI layer.
+      MIT. It is what Telegram's own takeout API is reached through.
+    -->
+    <PackageReference Include="WTelegramClient" Version="4.4.8" />
   </ItemGroup>
 
   <ItemGroup>
