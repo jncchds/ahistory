@@ -25,6 +25,7 @@
     <DataTemplate DataType="vm:PersonViewModel"><views:PersonView /></DataTemplate>
     <DataTemplate DataType="vm:SearchViewModel"><views:SearchView /></DataTemplate>
     <DataTemplate DataType="vm:ThreadsViewModel"><views:ThreadsView /></DataTemplate>
+    <DataTemplate DataType="vm:ConnectionsViewModel"><views:ConnectionsView /></DataTemplate>
     <DataTemplate DataType="vm:AiSettingsViewModel"><views:AiSettingsView /></DataTemplate>
     <DataTemplate DataType="vm:AiStatsViewModel"><views:AiStatsView /></DataTemplate>
     <DataTemplate DataType="vm:DiaryViewModel"><views:DiaryView /></DataTemplate>

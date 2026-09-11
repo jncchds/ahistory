@@ -33,6 +33,11 @@ public sealed class MainWindowTests
             new PersonViewModel(save.Queries, save.Conversation),
             new SearchViewModel(save.Queries, save.Search, save.Conversation),
             new PeopleViewModel(save.Queries, save.Merger, save.Suggestions),
+
+            // Always in the rail, because it is where the connector's switch is. It was left out
+            // of this list once, and the data template it needs was missing for a whole commit
+            // while every test passed — which is the exact failure these tests exist to catch.
+            new ConnectionsViewModel(save.Settings(), save.Database, save.MediaStore),
         ]);
 
     [Fact]
@@ -46,7 +51,7 @@ public sealed class MainWindowTests
         var viewModel = Assert.IsType<MainWindowViewModel>(window.DataContext);
 
         Assert.Equal(
-            ["Overview", "Import", "Conversations", "Search", "People", "Threads"],
+            ["Overview", "Import", "Accounts", "Conversations", "Search", "People", "Threads"],
             viewModel.Pages.Select(p => p.Title));
 
         Assert.Equal("Overview", viewModel.CurrentPage.Title);
@@ -70,6 +75,7 @@ public sealed class MainWindowTests
         {
             ["Overview"] = typeof(OverviewView),
             ["Import"] = typeof(ImportView),
+            ["Accounts"] = typeof(ConnectionsView),
             ["Conversations"] = typeof(PersonView),
             ["Search"] = typeof(SearchView),
             ["People"] = typeof(PeopleView),
