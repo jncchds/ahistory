@@ -26,7 +26,7 @@ namespace Archive.Sync.Telegram;
 /// place the user asked for it.
 /// </para>
 /// </remarks>
-public sealed class TelegramSource : IChatSource, IDisposable
+public sealed class TelegramSource : IAccountConnection, IDisposable
 {
     private readonly TelegramSettings _settings;
     private readonly SecretFile _session;
@@ -53,6 +53,8 @@ public sealed class TelegramSource : IChatSource, IDisposable
     public User? Me => _client?.User;
 
     public bool IsSignedIn => _client?.User is not null;
+
+    public string? AccountName => _client?.User is { } me ? Name(me) : null;
 
     /// <summary>
     /// Opens the connection, and reports what signing in still needs.
@@ -630,6 +632,36 @@ public sealed class TelegramSource : IChatSource, IDisposable
         Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Builds a Telegram connection from the settings and the session file beside them.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here connects: constructing a source opens nothing, which is what lets the window
+    /// hold a factory while the connector is switched off and contact nobody.
+    /// </remarks>
+    public sealed class Factory(ILoggerFactory? loggerFactory = null) : IAccountConnectionFactory
+    {
+        public IAccountConnection Create(SyncSettings settings)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+
+            return new TelegramSource(
+                settings.Telegram,
+                SessionFile(),
+                loggerFactory?.CreateLogger<TelegramSource>());
+        }
+
+        /// <summary>
+        /// Where the session lives: beside the settings, never in the save.
+        /// </summary>
+        /// <remarks>
+        /// A save is copied between machines and sometimes handed to someone, and a session inside
+        /// one would hand over the account with it.
+        /// </remarks>
+        public static SecretFile SessionFile() =>
+            new(Path.Combine(SyncSettingsStore.DefaultDirectory, "connectors", "telegram.session"));
     }
 
     /// <summary>

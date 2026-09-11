@@ -169,6 +169,33 @@ public sealed class SyncStore(Database database)
         return command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// The source a connected account of this platform writes into, if one has ever been listed.
+    /// </summary>
+    /// <remarks>
+    /// A save can hold several sources for a platform — an export someone handed over, and your own
+    /// account — so this names the one a connection is behind: the one with chats listed against it.
+    /// </remarks>
+    public string? SourceFor(string platform)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(platform);
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT c.source_id
+            FROM sync_chat c
+            JOIN import_source s ON s.id = c.source_id
+            WHERE s.platform = $platform
+            GROUP BY c.source_id
+            ORDER BY count(*) DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$platform", platform);
+
+        return command.ExecuteScalar() as string;
+    }
+
     /// <summary>How far a scope has been read, or null if it never has.</summary>
     public string? Cursor(string sourceId, string scope)
     {

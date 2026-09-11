@@ -130,6 +130,38 @@ confirmed against real files, and guessing at one is how the `.qhf` reader start
 folder of them is recognized and refused by name rather than being called unreadable, and a folder
 that mixes the two imports the `.qhf` files and tells you what it skipped.
 
+## Keeping it current
+
+An export goes stale the day it is made, and nobody repeats one by hand every month. Two ways to
+stop that, both off until you ask for them.
+
+**Watch a folder.** Point the app at the folder a scheduled export lands in — SMS Backup & Restore
+writing nightly, a Takeout scheduled every two months, DiscordChatExporter on a timer — and it is
+read again whenever what is in it changes. Re-import is idempotent, so nothing is duplicated, and a
+folder nobody has touched costs a directory listing rather than a read. No account and no network.
+
+**Connect a Telegram account.** The app signs in as you and reads the history itself, and keeps
+reading while it is open. It needs an `api_id` and `api_hash` of your own from
+[my.telegram.org](https://my.telegram.org) — those identify the application rather than you, and
+using your own means your account never runs under anybody else's.
+
+An account is every channel you follow as well as everyone you have ever written to, so **you choose
+which chats belong in the archive**. Nothing is read until you keep it, and a chat you have not
+decided about yet is not skipped — it is waiting, and keeping it later reads its history from the
+start.
+
+**A message deleted on the platform is kept here**, and the conversation says so, with the date the
+deletion was noticed. Keeping what was said is what an archive is for.
+
+Your session is stored outside the save — encrypted for your Windows account, readable only by you
+elsewhere — so a save you copy or hand to someone carries no way into your account. Signing out
+signs out on Telegram's side too. Nothing reads your account while the app is closed; what arrived
+meanwhile is caught up the next time it opens.
+
+The Telegram connector has **not met a real account yet**. `ahistory sync-check <save.db> <export>`
+reads the same messages from an export and from the account and reports every place the two
+disagree, which is the one check a fixture cannot be — see [D22](docs/decisions.md).
+
 ## Build and run
 
 Requires the .NET 10 SDK.
@@ -154,6 +186,15 @@ specific one. Or work headlessly:
 dotnet run --project src/Archive.Cli -- init ~/archives/mine.db
 dotnet run --project src/Archive.Cli -- import ~/archives/mine.db ~/Downloads/Telegram
 dotnet run --project src/Archive.Cli -- sources ~/archives/mine.db
+```
+
+Keeping it current, headlessly:
+
+```bash
+dotnet run --project src/Archive.Cli -- watch ~/archives/mine.db add ~/Dropbox/SMSBackups
+dotnet run --project src/Archive.Cli -- connect ~/archives/mine.db --api-id 12345 --api-hash …
+dotnet run --project src/Archive.Cli -- chats ~/archives/mine.db --include-kind dm
+dotnet run --project src/Archive.Cli -- sync ~/archives/mine.db --live
 ```
 
 ## Opening a save made by an older version
@@ -185,6 +226,7 @@ src/
   Archive.Media     content-addressed blob store
   Archive.Import    one reader per platform, normalizer, committer, export builders
   Archive.Ai        optional: providers, settings, and the model calls made against them
+  Archive.Sync      optional: watched folders, and accounts read from the platform itself
   Archive.Logging   logging setup shared by both heads
   Archive.Cli       headless init/import — how the importers are proven without a UI
   Archive.Ui        Avalonia views and view models
@@ -212,6 +254,13 @@ per machine, shared by every save, and overridable with `AHISTORY_Ai__*`. They a
 inside the archive: a save is meant to be copied between machines and sometimes handed to someone,
 and an API key inside it would travel with the correspondence. Nothing in the environment can
 switch AI on; that is a question the app asks once, in the window.
+
+Watched folders and connected accounts live in `ahistory/sync.json`, beside it and for the same
+reasons — a watched folder is a path on this machine, and an account is a way into your
+correspondence. The Telegram session itself is not in that file either: it is in
+`ahistory/connectors/`, encrypted for your Windows account and owner-only elsewhere. Which chats of
+an account belong in the archive is the opposite kind of thing — a decision about the archive — so
+it lives in the save and moves with it.
 
 ## Try it without an export
 
@@ -276,8 +325,14 @@ them until allowed in System Settings.
 ## Privacy
 
 This is about as sensitive as personal data gets: your correspondence, and everyone who wrote to
-you. There is no telemetry and no cloud component, and with AI switched off — which is how it
-ships — nothing leaves your machine at all.
+you. There is no telemetry and no cloud component, and as it ships — with AI off and no account
+connected — nothing leaves your machine at all.
+
+Two things can make it talk to a network, and both are switches you throw yourself. Connecting an
+account contacts that platform, as any client of it would: it asks for your own history and sends
+none of your archive anywhere. Switching AI on sends conversations to whichever endpoint you name,
+which may be a model running on your own machine. With either switched off there is no connection,
+no process and nothing of it in the window.
 
 Switching AI on means choosing an endpoint, and that choice is what decides whether anything is
 sent anywhere: point it at a model running on your own machine and it still never leaves. The app

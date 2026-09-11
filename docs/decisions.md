@@ -980,3 +980,120 @@ read day first, the only order any locale writes them in, and a two-digit year i
 
 None of the nine has met a real export. D22 is the standing warning, and WhatsApp — whose format
 varies by phone, app version and locale — is where it applies most.
+
+## D34 — The app reads accounts too, not only exports of them
+
+The importer roadmap's recommendation was blunt: *the app imports exports, not devices*. That
+stands for everything it was written about — encrypted device databases, passphrases, third-party
+tooling — and it is reversed for one case: **an account the user signs in to themselves, through
+the platform's own API.**
+
+Two things made the reversal worth it.
+
+**An export goes stale the day it is made.** A Takeout takes days to arrive, a Telegram export is a
+manual chore, and nobody repeats either monthly. The archive is a snapshot of whenever someone last
+bothered, and the most recent year — the one people actually search — is the one most likely to be
+missing.
+
+**An API is the only source of real data this project can get on demand.** Eleven of thirteen
+readers have never met a real export (D22, D33). A connected account produces the same messages by
+an independent route, which is a check no fixture can be: a builder and a reader written by the same
+hand from the same misreading agree with each other. `ahistory sync-check` reads the same messages
+both ways and reports every disagreement.
+
+### What was built
+
+**Watched folders**, which need no account at all. A scheduled export — SMS Backup & Restore
+nightly, a Takeout every two months — lands in a folder that is re-read when it changes. Re-import
+is idempotent (P3), and an unchanged folder costs a directory listing rather than a read, because
+`IsAlreadyImported` compares the name-and-size fingerprint the run already records.
+
+**A Telegram connection**, in `Archive.Sync`, which the storage layer must not reference — the same
+direction rule that keeps a model runtime out of it (D31), for the same reason: reading a folder
+must stay a thing that touches nothing but that folder.
+
+### One normalizer, not two
+
+A message off the wire is written in the shape Telegram Desktop's export writes it, and
+`TelegramNormalizer` reads that. Writing a second reader for the API would have meant two
+implementations of every §2 trap, and two chances to disagree — and disagreement means the same
+message stored twice or looking edited every time the routes meet.
+
+What this cannot establish is whether the export writes a supergroup's chat id the way the API
+gives it, or whether entities convert identically. Those need a real export, which is what
+`sync-check` is for, and until one has been run this reader is exactly as unproven as the nine in
+D33.
+
+### An edit is a change to what was said
+
+`ContentHash` covers each attachment's path, which is right within one route and wrong across two:
+an export names `photos/photo_3@…jpg` and an account names `telegram:photo/5566`. A hash mismatch
+alone would have recorded a revision, with identical text on both sides, every time the two met.
+
+So a stored message counts as edited when its text, entities or service action differ — entities
+compared as JSON values, since an export keeps Telegram's indentation. A different attachment path
+is not an edit, and never was a useful one: the media rows such a "revision" would have rewritten
+are keyed by ordinal and were not being replaced anyway.
+
+### The cursor and the page are one transaction
+
+Fetching, downloading and hashing happen with nothing open. Then one short transaction writes the
+messages and how far the chat has been read. A cursor committed ahead of its page skips that page
+for ever after a crash; committed behind it, the worst case is reading a page twice, which the uid
+makes free.
+
+This is also why `ImportCommitter` no longer opens its next transaction the moment it commits the
+last: harmless for a file read in milliseconds, and a write lock held across every network wait for
+a connector.
+
+Catching up has a trap of its own. Asking Telegram for "newer than N" returns the *most recent*
+hundred, not the oldest hundred, so a chat with two hundred new messages would leave a hole in the
+middle. The cursor walks down from the top of the new stretch and only moves forward once the
+stretch is exhausted.
+
+### Chats are decided, never assumed
+
+An account is every channel someone follows as well as everyone they have ever written to. Reading
+all of it buries the correspondence under broadcast traffic, so `sync_chat` holds a decision per
+chat and nothing is read until it is included. **Undecided is not ignored**: it is listed to be
+decided, and including it later reads its history from the start, which is why a live message for
+an undecided chat can be dropped without losing anything.
+
+### Deletions are recorded, not applied
+
+The platform says a message is gone; the archive keeps every word of it (P2) and says so, in the
+conversation, with the date the deletion was noticed — no platform reports when it happened. A
+deletion flushes whatever is buffered first, because a message deleted moments after it was sent is
+the ordinary case and marking one that has not been written yet would silently do nothing.
+
+### The session is the account
+
+Whoever holds a Telegram session is signed in as the user. It is kept outside the save (P7, and the
+README's promise that a copied save carries no key), DPAPI-encrypted on Windows, and owner-only
+elsewhere — the Linux and macOS key stores are native per-desktop libraries, and pulling one in for
+a feature most users never enable is what D32 refused for model runtimes. Disconnecting signs out on
+Telegram's side rather than only deleting the file.
+
+The `api_id` is the user's own, from my.telegram.org. Shipping one is common for open-source
+clients and would run every user's account under the maintainer's application.
+
+### What is deliberately not built
+
+- **Telegram's takeout API**, which is what the official export uses and has looser flood limits.
+  It needs a confirmation in another Telegram client and a delay that cannot be tried without an
+  account, so it is a known improvement rather than a guess committed blind.
+- **WhatsApp through an unofficial client.** It would work — a linked companion device receives a
+  history sync — and whatsmeow's issue #810 documents bans landing on low-volume, legitimate use.
+  Losing a WhatsApp account costs someone far more than their archive gains.
+- **Discord DMs**, which need a user token and are against its terms. DiscordChatExporter already
+  exists, and a watched folder picks up what it writes.
+- **Signal Desktop**, whose database is SQLCipher with the key in the OS key store: a native
+  dependency for one platform's reader.
+
+### Nothing runs while the app is closed
+
+The watcher and the live connection live and die with the window, like the AI runner. Catching up
+on the next launch is what covers the gap, and that is a promise about a machine rather than about
+a feature.
+
+Neither the connector nor any watched folder has met a real account or a real scheduled export yet.

@@ -146,6 +146,11 @@ internal static class Program
         // this one, which P7 keeps out of the save); which chats a connected account contributes
         // is per save, and lives in the save.
         services.AddSingleton<SyncSettingsStore>();
+
+        // The seam that decides whether anything is contacted: with the connector switched off the
+        // page never calls this, so no client of any platform's is ever constructed.
+        services.AddSingleton<IAccountConnectionFactory>(
+            _ => new Archive.Sync.Telegram.TelegramSource.Factory(loggerFactory));
         services.AddSingleton(provider => new FolderWatcher(
             provider.GetRequiredService<ImportRunner>(),
             provider.GetRequiredService<SyncSettingsStore>(),
@@ -169,6 +174,7 @@ internal static class Program
         AddPage<SearchViewModel>(services);
         AddPage<PeopleViewModel>(services);
         AddPage<ThreadsViewModel>(services);
+        AddPage<ConnectionsViewModel>(services);
         AddPage<AiSettingsViewModel>(services);
         AddPage<AiStatsViewModel>(services);
         AddPage<DiaryViewModel>(services);
@@ -201,6 +207,10 @@ internal static class Program
     {
         var watcher = services.GetRequiredService<FolderWatcher>();
         var window = services.GetRequiredService<MainWindowViewModel>();
+
+        // Reading an account changes the archive the same way an import does, and every other page
+        // counts something out of it.
+        services.GetRequiredService<ConnectionsViewModel>().Imported += window.ReloadAsync;
 
         watcher.Checked += check =>
         {

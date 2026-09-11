@@ -42,6 +42,10 @@ Concretely, and non-negotiably:
   per-RID binaries which would otherwise ship and load for every user who never enables anything.
   Enforced by `SolutionLayoutTests.No_storage_project_takes_an_ai_dependency` and
   `No_storage_project_references_the_ai_project`.
+- **No platform client in the storage layer either.** The same direction, for the same reason:
+  `Archive.Sync` — watched folders and accounts read from the platform itself (decisions.md D34) —
+  is referenced by the UI and the heads, never by storage. Reading a folder must stay a thing that
+  touches nothing but that folder. Enforced by `No_storage_project_references_the_sync_project`.
 - **No view may require a derived artifact to render.** A message with no transcript, no
   embedding and no extracted facts is the normal state and must look normal — not like a loading
   skeleton that never resolves.
@@ -119,7 +123,8 @@ dotnet run --project src/Archive.Cli -- init <path-to-save.db>
 ## Conventions
 
 **Structure.** `Core` depends on nothing; everything depends on `Core`; the heads (`Cli`,
-`Desktop`) depend on everything. Enforced by `SolutionLayoutTests`.
+`Desktop`) depend on everything. The two optional layers — `Archive.Ai` and `Archive.Sync` — are
+referenced by the UI and the heads and by nothing in storage. Enforced by `SolutionLayoutTests`.
 
 Shared build settings live in `Directory.Build.props` and are **not** repeated in any csproj —
 also enforced by a test.

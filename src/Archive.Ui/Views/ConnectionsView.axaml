@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Archive.Ui.ViewModels"
+             x:Class="Archive.Ui.Views.ConnectionsView"
+             x:DataType="vm:ConnectionsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16" Margin="24,20">
+
+      <TextBlock Classes="heading" Text="Accounts" />
+
+      <TextBlock Classes="subtle" TextWrapping="Wrap"
+                 Text="An export goes stale the day it is made. Connect an account and the archive reads it directly — the history it already has, and what arrives while the app is open." />
+
+      <!-- The switch. Nothing is contacted until it is on, and turning it off stops everything
+           now rather than at the next restart. -->
+      <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanConnect}"
+                Content="Read my Telegram account" />
+
+      <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !CanConnect}"
+                 Text="This build has no connectors." />
+
+      <StackPanel Spacing="12" IsVisible="{Binding IsEnabled}">
+
+        <!-- Telegram issues an api_id per application, not per person. Using the user's own means
+             their account never runs under anyone else's. -->
+        <StackPanel Spacing="6" IsVisible="{Binding !IsSignedIn}">
+          <TextBlock Text="Your Telegram application" FontWeight="SemiBold" />
+          <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+                     Text="Sign in at my.telegram.org, open 'API development tools' and create an application. The id and hash identify the application, not you." />
+          <Grid ColumnDefinitions="140,10,*,10,Auto">
+            <TextBox Grid.Column="0" Text="{Binding ApiId}" PlaceholderText="api_id" />
+            <TextBox Grid.Column="2" Text="{Binding ApiHash}" PlaceholderText="api_hash" />
+            <Button Grid.Column="4" Content="Save" Command="{Binding SaveApplicationCommand}" />
+          </Grid>
+        </StackPanel>
+
+        <!-- Signing in, one question at a time: the phone, then the code, then the password. -->
+        <StackPanel Spacing="6" IsVisible="{Binding !IsSignedIn}">
+          <Grid ColumnDefinitions="220,10,Auto">
+            <TextBox Grid.Column="0" Text="{Binding PhoneNumber}" PlaceholderText="+49 …" />
+            <Button Grid.Column="2" Content="Sign in" Command="{Binding SignInCommand}"
+                    IsEnabled="{Binding CanSignIn}" />
+          </Grid>
+
+          <StackPanel Spacing="6" IsVisible="{Binding Awaiting, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="{Binding AwaitingLabel}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="220,10,Auto">
+              <TextBox Grid.Column="0" Text="{Binding Answer}"
+                       PasswordChar="{Binding AwaitingIsSecret, Converter={x:Static vm:PasswordCharConverter.Instance}}" />
+              <Button Grid.Column="2" Content="Continue" Command="{Binding SubmitAnswerCommand}" />
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Signed in. -->
+        <Border IsVisible="{Binding IsSignedIn}" Background="{DynamicResource ElevatedBrush}"
+                CornerRadius="4" Padding="12">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Sign out" Command="{Binding DisconnectCommand}" />
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding AccountName, StringFormat='Signed in as {0}'}" FontWeight="SemiBold" />
+              <TextBlock Classes="faint" Text="{Binding SessionNote}" TextWrapping="Wrap" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- Which chats belong in the archive. An account is every channel someone follows as
+             well as everyone they have written to, so this is decided rather than assumed. -->
+        <StackPanel Spacing="8" IsVisible="{Binding HasChats}">
+          <TextBlock Text="Which chats to keep" FontWeight="SemiBold" />
+          <TextBlock Classes="subtle" FontSize="12" TextWrapping="Wrap"
+                     Text="Nothing is read until you keep it. A chat you have not decided about is not skipped — it is waiting, and including it later reads its history from the start." />
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBox Width="220" Text="{Binding ChatFilter}" PlaceholderText="Filter by name" />
+            <Button Content="Keep all direct chats" Command="{Binding IncludeDirectCommand}" />
+            <Button Content="Skip all channels" Command="{Binding IgnoreChannelsCommand}" />
+          </StackPanel>
+
+          <TextBlock Classes="faint">
+            <Run Text="{Binding IncludedCount}" />
+            <Run Text="kept," />
+            <Run Text="{Binding UndecidedCount}" />
+            <Run Text="still to decide" />
+          </TextBlock>
+
+          <ItemsControl ItemsSource="{Binding VisibleChats}" MaxHeight="420">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChatChoice">
+                <Border Background="{DynamicResource ElevatedBrush}" CornerRadius="4"
+                        Padding="10,6" Margin="0,2">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                      <Button Content="Keep" FontSize="11" Padding="10,2"
+                              Command="{Binding IncludeCommand}" IsEnabled="{Binding !IsIncluded}" />
+                      <Button Content="Skip" FontSize="11" Padding="10,2"
+                              Command="{Binding IgnoreCommand}" IsEnabled="{Binding !IsIgnored}" />
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="faint">
+                        <Run Text="{Binding Kind}" />
+                        <Run Text="·" />
+                        <Run Text="{Binding LastActive}" />
+                        <Run Text="·" />
+                        <Run Text="{Binding MessageCount, StringFormat='{}{0:N0} in the archive'}" />
+                      </TextBlock>
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <StackPanel Spacing="8" IsVisible="{Binding IsSignedIn}">
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Content="Read now" Command="{Binding ReadNowCommand}" IsEnabled="{Binding CanRead}" />
+            <ProgressBar IsIndeterminate="True" Width="140" VerticalAlignment="Center"
+                         IsVisible="{Binding IsWorking}" />
+          </StackPanel>
+
+          <CheckBox IsChecked="{Binding KeepReading}"
+                    Content="Keep reading while ahistory is open" />
+          <TextBlock Classes="faint" TextWrapping="Wrap"
+                     Text="Nothing reads your account while the app is closed. What arrived meanwhile is caught up the next time it opens." />
+        </StackPanel>
+
+        <TextBlock Classes="subtle" TextWrapping="Wrap"
+                   IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Text="{Binding Status}" />
+
+        <TextBlock Foreground="IndianRed" TextWrapping="Wrap"
+                   IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Text="{Binding Error}" />
+      </StackPanel>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

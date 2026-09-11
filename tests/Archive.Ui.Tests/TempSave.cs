@@ -48,7 +48,10 @@ internal sealed class TempSave : IDisposable
     /// would rewrite what the person running the suite has watched.
     /// </remarks>
     internal Archive.Sync.FolderWatcher Watcher() =>
-        new(Runner, new Archive.Sync.SyncSettingsStore(Path.Combine(_directory, "settings")), Database.DatabasePath);
+        new(Runner, Settings(), Database.DatabasePath);
+
+    /// <summary>A settings store of this save's own, never the machine's real sync.json.</summary>
+    internal Archive.Sync.SyncSettingsStore Settings() => new(Path.Combine(_directory, "settings"));
 
     /// <summary>
     /// Runs SQL against the save.
