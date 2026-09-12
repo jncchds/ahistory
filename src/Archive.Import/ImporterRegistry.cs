@@ -2,6 +2,7 @@ using Archive.Import.Discord;
 using Archive.Import.GoogleChat;
 using Archive.Import.GoogleVoice;
 using Archive.Import.Hangouts;
+using Archive.Import.IMessage;
 using Archive.Import.Meta;
 using Archive.Import.Qip;
 using Archive.Import.Skype;
@@ -51,6 +52,7 @@ public sealed class ImporterRegistry
             new SmsBackupImporter(),
             new WhatsAppImporter(),
             new SkypeImporter(),
+            new IMessageImporter(),
             new DiscordImporter(),
             new SlackImporter(),
             new VkImporter(),

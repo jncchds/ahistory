@@ -1,8 +1,10 @@
 > **Status, 2026-09-12.** Built: route A (watched folders) for every existing reader; the shared
 > sync plumbing; and the Telegram connector — sign-in, chat decisions, backfill, live updates,
 > deletions — in the CLI and in the window. The decisions they forced are
-> [D34](decisions.md). Not built: Telegram's takeout API, iMessage, Slack, Signal. Nothing here has
-> met a real account; `ahistory sync-check` against a real export is what would confirm it.
+> [D34](decisions.md); and the iMessage reader, which is route C and whose decisions are
+> [D35](decisions.md). Not built: Telegram's takeout API, Slack, Signal. Nothing here has met a real
+> account or a real `chat.db`; `ahistory sync-check` against a real export is what would confirm the
+> Telegram half.
 >
 > **Forward-looking, not a record.** A plan for getting history from the platforms directly —
 > on demand, and live where a platform allows it — rather than only from exports the user

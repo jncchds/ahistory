@@ -11,8 +11,15 @@
 **Status, 2026-09-11.** Built: G1; Google Chat; Meta (Messenger and Instagram); SMS and MMS;
 WhatsApp; Skype's export JSON; Discord's data package and DiscordChatExporter; Slack; and Google
 Voice, which this survey did not list. The decisions they forced are [D33](decisions.md). Not built:
-Skype's legacy `main.db`, Signal, iMessage, Viber, LINE, WeChat, Miranda and Mail.ru Agent. None of
+Skype's legacy `main.db`, Signal, Viber, LINE, WeChat, Miranda and Mail.ru Agent. None of
 the new readers has met a real export yet.
+
+**Status, 2026-09-12.** **iMessage is built** ([D35](decisions.md)), which this survey rated Tier 3
+and "device access rather than an export". It reads `~/Library/Messages/chat.db` directly — a
+snapshot copy, because Messages keeps recent writes in its write-ahead log — and it has not met a
+real one either. The standing rule this file recommends, *the app imports exports, not devices*, is
+reconsidered in [D34](decisions.md), which also records the watched folders and the Telegram
+connection that came with it.
 
 ---
 

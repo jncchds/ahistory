@@ -1097,3 +1097,49 @@ on the next launch is what covers the gap, and that is a promise about a machine
 a feature.
 
 Neither the connector nor any watched folder has met a real account or a real scheduled export yet.
+
+## D35 — iMessage is read from the database a Mac already keeps
+
+The fourteenth reader, and the first that reads a live database rather than an export. It is route C
+of the plan: no network, no credentials, no protocol — `~/Library/Messages/chat.db` is plain SQLite
+and the messages are simply there, given Full Disk Access, which macOS grants in System Settings and
+nothing in this app can ask for.
+
+**The database is copied before it is read**, with its `-wal` and `-shm` when they exist. Messages
+is usually running, and SQLite keeps recent writes in the write-ahead log until it is checkpointed:
+reading `chat.db` alone would silently miss the newest messages, which is the failure mode this
+project dislikes most — an import that looks complete and is not. Opening the live file read-only
+would also need to write its `-shm`, which is not a thing to do to somebody's Messages database.
+
+**The text is usually not in the text column.** Since High Sierra it is in `attributedBody`, an
+archived `NSAttributedString` in a typedstream — a serialization format Apple documents nowhere.
+Skipping those messages would lose most of a modern archive, and guessing at the format would
+produce text assembled from the wrong bytes. So `TypedStreamText` reads exactly one shape — the
+`NSString` class name, the marker for a C string, a length, UTF-8 — and refuses anything else by
+name (D20).
+
+**Tapbacks are rows, not reactions, until this reader makes them reactions.** A "loved" arrives as
+an ordinary message pointing at another message's guid; imported as written, a conversation fills up
+with "Loved an image" and the reaction is lost. They are collected first, folded into the message
+they point at, and a removal cancels the one it names — which is what Messages itself shows.
+
+**Timestamps are nanoseconds since 2001** on anything recent and seconds on older databases. The two
+are told apart by magnitude, and a value that is neither is refused rather than reinterpreted: read
+in the wrong unit an entire archive lands decades from where it happened.
+
+**The owner is read, not invented.** Every row the user sent carries the account that sent it —
+`p:+1555…`, `e:someone@…` — and the commonest of those is whose Mac it is. With none, the preview
+asks and the placeholder is recorded as the guess it is (D25). Accounts and handles normalize to one
+identity: an Apple ID lowercased, a number with its formatting removed and no country code invented,
+the same rule the SMS reader follows.
+
+**No `raw_json` is kept.** §1 keeps the original so a parser gap can be re-run rather than
+re-requested — and here the original is the user's own database, still on their own disk. Copying
+rows into the archive would duplicate what has not gone anywhere.
+
+Attachment paths are stored relative to the Messages folder, because `~/Library/Messages/…` means
+nothing on the machine a save is later opened on.
+
+It has never met a real `chat.db`. The builder that writes the fixtures and the reader were written
+from the same reading of the schema, so they agree with each other and that is worth exactly
+nothing on its own — D22, again, and it applies here as much as it applied to QIP.

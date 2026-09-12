@@ -23,7 +23,7 @@ and the archive stays fully usable while that work runs in the background. This 
 
 ## Status
 
-**0.1.0.** The archive itself: schema, thirteen importers, media store, per-person conversation view,
+**0.1.0.** The archive itself: schema, fourteen importers, media store, per-person conversation view,
 keyword search, and standalone builds for all three desktop platforms.
 
 | Milestone | | |
@@ -95,7 +95,8 @@ something another person said.
 | **WhatsApp** | the folder holding the exported chat `.txt` files, unzipped, with their media | Built to the export as documented; **not yet run against a real export**, and the format varies by phone and locale |
 | **Discord** | the unpacked data package, or a folder of DiscordChatExporter `.json` files | Built to both documented shapes. **The package holds only your own messages**; DiscordChatExporter holds everyone's |
 | **Slack** | the unpacked workspace export, containing `users.json` and `channels.json` | Built to the documented export; workspace history, and it does not say which account is yours |
-| Signal, iMessage | — | Under consideration: encrypted or device-local databases, which need a decrypt step outside the app |
+| **iMessage** | the folder holding `chat.db` — on a Mac that is `~/Library/Messages` | Read from the database Messages keeps, which needs Full Disk Access. Built to the schema as documented by the tools that read it; **not yet run against a real one** |
+| Signal | — | Under consideration: an encrypted database needing a decrypt step outside the app |
 
 Point the app at the folder and it works out which format it is, says so, and refuses rather than
 guessing if it does not recognize it.
