@@ -23,8 +23,10 @@ and the archive stays fully usable while that work runs in the background. This 
 
 ## Status
 
-**0.1.0.** The archive itself: schema, fourteen importers, media store, per-person conversation view,
-keyword search, and standalone builds for all three desktop platforms.
+**0.2.0.** The archive, and two ways to stop it going stale. Fourteen importers, a media store, the
+per-person conversation and keyword search, as before — plus folders that are re-read whenever a
+scheduled export changes them, and a Telegram account the app reads directly, chat by chat, with
+what the platform deletes kept here and marked. Standalone builds for all three desktop platforms.
 
 | Milestone | | |
 |---|---|---|
@@ -36,6 +38,7 @@ keyword search, and standalone builds for all three desktop platforms.
 | M5 | The continuous per-person conversation | ✅ |
 | M6 | Full-text search | ✅ |
 | M7 | Packaging for Windows, Linux and macOS | ✅ |
+| M8 | Keeping it current — watched folders, connected accounts | ✅ |
 
 The AI layer, off until you switch it on. Point it at a local or hosted model and the app checks it
 can call tools. A background runner splits the archive into sessions on gaps of silence and, once
