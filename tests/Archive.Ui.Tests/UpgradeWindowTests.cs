@@ -15,6 +15,7 @@ namespace Archive.Ui.Tests;
 /// here is that the question is asked, that asking it changes nothing on its own, and that saying
 /// yes actually leads to the archive.
 /// </remarks>
+[Collection(Headless.Collection)]
 public sealed class UpgradeWindowTests
 {
     /// <summary>

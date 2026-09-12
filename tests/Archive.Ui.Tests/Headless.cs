@@ -20,6 +20,23 @@ namespace Archive.Ui.Tests;
 /// </remarks>
 internal static class Headless
 {
+    /// <summary>
+    /// The collection every test that opens a window belongs to.
+    /// </summary>
+    /// <remarks>
+    /// There is one headless session per assembly and one UI thread inside it, and xUnit runs test
+    /// <em>classes</em> in parallel. So two classes dispatching into that thread at once is the
+    /// default arrangement, not an unlucky one — and it surfaced as
+    /// "the calling thread cannot access this object because a different thread owns it", from a
+    /// window one of them had opened. It failed only on the Windows runner, which is to say it
+    /// failed wherever the timing happened to line up, and never on the machine the tests were
+    /// written on.
+    ///
+    /// Putting them in one collection serializes them against each other and against everything
+    /// else, which costs a few seconds of a suite that takes eight.
+    /// </remarks>
+    internal const string Collection = "avalonia";
+
     private static readonly HeadlessUnitTestSession Session =
         HeadlessUnitTestSession.GetOrStartForAssembly(typeof(Headless).Assembly);
 
@@ -29,3 +46,7 @@ internal static class Headless
     internal static Task RunAsync(Func<Task> body) =>
         Session.Dispatch(body, CancellationToken.None);
 }
+
+/// <summary>Serializes the tests that share Avalonia's one headless UI thread.</summary>
+[CollectionDefinition(Headless.Collection, DisableParallelization = true)]
+public sealed class HeadlessCollection;

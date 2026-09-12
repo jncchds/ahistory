@@ -15,6 +15,7 @@ namespace Archive.Ui.Tests;
 /// then produces an empty window at runtime — the one class of failure only a real Application
 /// can catch.
 /// </remarks>
+[Collection(Headless.Collection)]
 public sealed class MainWindowTests
 {
     /// <summary>
