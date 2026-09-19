@@ -269,6 +269,149 @@ public sealed class IdentityMergerTests
         Assert.Throws<InvalidOperationException>(() => merger.MergePeople(Seed.SamPersonId, "nobody"));
     }
 
+    // What the model learned about someone. A merge used to delete it: the emptied person was
+    // removed, facts cascade from person, and the session they came from still counted as read.
+
+    /// <summary>A merged-away person's facts become facts about the person they were merged into.</summary>
+    [Fact]
+    public void Merging_a_person_keeps_what_was_learned_about_them()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        AddPerson(db, "p:gh-sam", "idn-gh-sam");
+        AddArtifact(db);
+        AddPersonFact(db, "f-sam", Seed.SamPersonId);
+
+        merger.MergePeople(Seed.SamPersonId, "p:gh-sam");
+
+        Assert.Equal("p:gh-sam", db.Scalar<string>("SELECT subject_person_id FROM fact WHERE id = 'f-sam';"));
+
+        // And its evidence with it: the citation is what makes "why does it think this?" answerable.
+        Assert.Equal(1, db.Scalar<long>("SELECT count(*) FROM fact_citation WHERE fact_id = 'f-sam';"));
+    }
+
+    /// <summary>
+    /// Facts about a pair follow the person into the same pair, and join that edge if the target
+    /// already has one — while a fact about the two merged people together has nothing to describe.
+    /// </summary>
+    [Fact]
+    public void Merging_a_person_moves_their_pairs_onto_the_target()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        AddPerson(db, "p:gh-sam", "idn-gh-sam");
+        AddPerson(db, "p:alex", "idn-alex");
+        AddArtifact(db);
+
+        // Sam and the owner; the target already has an edge with the owner too.
+        AddEdgeFact(db, "e-owner-sam", Seed.OwnerPersonId, Seed.SamPersonId, "f-owner-sam");
+        AddEdgeFact(db, "e-owner-ghsam", Seed.OwnerPersonId, "p:gh-sam", "f-owner-ghsam");
+
+        // Sam and Alex; the target has no edge with Alex.
+        AddEdgeFact(db, "e-alex-sam", "p:alex", Seed.SamPersonId, "f-alex-sam");
+
+        // Sam and the target: after the merge, a relationship between one human and themselves.
+        AddEdgeFact(db, "e-ghsam-sam", "p:gh-sam", Seed.SamPersonId, "f-ghsam-sam");
+
+        merger.MergePeople(Seed.SamPersonId, "p:gh-sam");
+
+        Assert.Equal("e-owner-ghsam", db.Scalar<string>("SELECT subject_edge_id FROM fact WHERE id = 'f-owner-sam';"));
+        Assert.Equal(0, db.Scalar<long>("SELECT count(*) FROM person_edge WHERE id = 'e-owner-sam';"));
+
+        Assert.Equal("e-alex-sam", db.Scalar<string>("SELECT subject_edge_id FROM fact WHERE id = 'f-alex-sam';"));
+        Assert.Equal(
+            "p:alex|p:gh-sam",
+            db.Scalar<string>("SELECT person_a_id || '|' || person_b_id FROM person_edge WHERE id = 'e-alex-sam';"));
+
+        Assert.Equal(0, db.Scalar<long>("SELECT count(*) FROM fact WHERE id = 'f-ghsam-sam';"));
+
+        // Nothing is left pointing at the person who is gone.
+        Assert.Equal(
+            0,
+            db.Scalar<long>($"""
+                SELECT count(*) FROM person_edge
+                WHERE '{Seed.SamPersonId}' IN (person_a_id, person_b_id);
+                """));
+    }
+
+    /// <summary>Moving someone's only account is merging them, and their facts go with it.</summary>
+    [Fact]
+    public void Merging_a_persons_last_account_keeps_what_was_learned_about_them()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        AddPerson(db, "p:alex", "idn-alex");
+        AddArtifact(db);
+        AddPersonFact(db, "f-sam", Seed.SamPersonId);
+
+        merger.MergeInto(Seed.IdentityId, "p:alex");
+
+        Assert.Equal("p:alex", db.Scalar<string>("SELECT subject_person_id FROM fact WHERE id = 'f-sam';"));
+    }
+
+    /// <summary>
+    /// Moving one of several accounts leaves the person, and what is known about them, in place.
+    /// </summary>
+    [Fact]
+    public void Moving_one_of_several_accounts_leaves_the_facts_with_the_person()
+    {
+        var (db, merger) = Fixture();
+        using var _ = db;
+
+        AddSecondAccountFor(db, Seed.SamPersonId, "idn-vk-sam");
+        AddPerson(db, "p:alex", "idn-alex");
+        AddArtifact(db);
+        AddPersonFact(db, "f-sam", Seed.SamPersonId);
+
+        merger.MergeInto("idn-vk-sam", "p:alex");
+
+        Assert.Equal(Seed.SamPersonId, db.Scalar<string>("SELECT subject_person_id FROM fact WHERE id = 'f-sam';"));
+    }
+
+    private static void AddPerson(TempDatabase db, string personId, string identityId) =>
+        db.Execute($"""
+            INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)
+            VALUES ('{identityId}', 'hangouts', '{identityId}', 'Someone', '{Seed.ImportId}', '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO person (id, display_name, is_owner, created_utc)
+            VALUES ('{personId}', 'Someone', 0, '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO identity_person (identity_id, person_id, confidence, linked_utc)
+            VALUES ('{identityId}', '{personId}', 'auto', '2020-01-01T00:00:00.0000000+00:00');
+            """);
+
+    private static void AddArtifact(TempDatabase db) =>
+        db.Execute("""
+            INSERT INTO derived_artifact (id, kind, engine, model, model_version, payload_json, input_hash, created_utc)
+            VALUES ('da-1', 'session_extract', 'llm', 'm', 'v', '{}', 'h', '2020-01-01T00:00:00.0000000+00:00');
+            """);
+
+    private static void AddPersonFact(TempDatabase db, string factId, string personId) =>
+        db.Execute($"""
+            INSERT INTO fact (id, subject_person_id, predicate, object_text, claim_text, evidence_kind,
+                              origin_kind, confidence, asserted_utc, derived_artifact_id)
+            VALUES ('{factId}', '{personId}', 'lives_in', 'lisbon', 'Lives in Lisbon', 'self_report',
+                    'dm', 0.9, '2020-01-01T00:00:00.0000000+00:00', 'da-1');
+
+            INSERT INTO fact_citation (fact_id, message_id, role)
+            SELECT '{factId}', id, 'asserts' FROM message WHERE uid = 'tg/100/1';
+            """);
+
+    /// <param name="a">The lesser id of the pair: edges are stored in canonical order.</param>
+    private static void AddEdgeFact(TempDatabase db, string edgeId, string a, string b, string factId) =>
+        db.Execute($"""
+            INSERT INTO person_edge (id, person_a_id, person_b_id, created_utc)
+            VALUES ('{edgeId}', '{a}', '{b}', '2020-01-01T00:00:00.0000000+00:00');
+
+            INSERT INTO fact (id, subject_edge_id, predicate, object_text, claim_text, evidence_kind,
+                              origin_kind, confidence, asserted_utc, derived_artifact_id)
+            VALUES ('{factId}', '{edgeId}', 'met_in', 'berlin', 'Met in Berlin', 'reflected',
+                    'dm', 0.8, '2020-01-01T00:00:00.0000000+00:00', 'da-1');
+            """);
+
     private static void AddSecondAccountFor(TempDatabase db, string personId, string identityId) =>
         db.Execute($"""
             INSERT INTO identity (id, platform, source_identity_id, display_name, first_import_id, created_utc)

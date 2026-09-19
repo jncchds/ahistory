@@ -62,7 +62,8 @@ public sealed class UpgradeWindowTests
             DELETE FROM schema_migration
             WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
                            '006_ai_interaction.sql', '007_ai_jobs.sql',
-                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql');
+                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql',
+                           '011_refill_lost_facts.sql');
             """;
         command.ExecuteNonQuery();
     }

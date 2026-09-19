@@ -1143,3 +1143,44 @@ nothing on the machine a save is later opened on.
 It has never met a real `chat.db`. The builder that writes the fixtures and the reader were written
 from the same reading of the schema, so they agree with each other and that is worth exactly
 nothing on its own — D22, again, and it applies here as much as it applied to QIP.
+
+## D36 — A merge moves what was learned about a person; it does not delete it
+
+§7 says a fact is never updated in place. A merge now updates one column of it: the subject.
+
+Before this, merging two people deleted everything the model had learned about the one merged away.
+The emptied person is removed, `fact.subject_person_id` cascades from `person`, and the facts and
+their citations went with them — so did facts about any pair that person was in, through
+`person_edge`. The session they were read from kept its `session_extract`, so it still counted as
+read at the current prompt and was never planned again. From the outside: run extraction, merge
+two accounts, and the facts panel is empty for good.
+
+**The subject is repointed, not the claim rewritten.** §7's rule is about keeping "why does it
+think this?" answerable: a correction is a new row so the old belief and its evidence survive. None
+of that is touched here. The claim, the citations and both time axes stay as they were, and the
+subject moves for the reason a merge moves an identity rather than rewriting a message's sender
+(§1): who a row is about has turned out to be someone else's row in the People list. The other ways
+to keep the facts — copying them to new rows, or keeping the emptied person alive as a hidden
+subject — produce duplicate rows with duplicate citations, or a person who is in the archive but
+not in the list.
+
+Pair facts move to the same pair with the target in it, and join the target's edge when one already
+exists. A fact about the merged pair itself is let go: it describes a relationship between two
+accounts of one human. Diary entries and rollups are also let go, because the planner writes them
+again from the merged facts, and two for the same person and month would be worse than none.
+
+`IdentityMerger.Unmerge` does not split the facts back. Nothing records which account a fact came
+through, and guessing from its citations would pin a claim on the wrong account as often as not. The
+facts stay with the person the account leaves, and re-reading the conversations is the way to
+split them.
+
+**Saves that merged before this lost the rows, and nothing records what they said.** An extract's
+payload stores how many facts a run wrote, not the facts. So `011_refill_lost_facts.sql` repairs
+them the only way possible: it puts extraction back in the queue for each session whose newest
+extract accounts for fewer rows than it reported. It sends nothing itself. The jobs run under
+whatever consent and exclusions apply when the runner next drains, and with AI off they wait. The
+job's input hash is extended so the re-read is a new extract that retracts the survivors, the path
+a prompt change already takes. Under the old hash it would land on the old extract's id and
+collide with the survivors' fact ids. A run that declined to write something the user had already
+ruled on also looks short, and gets read once more for nothing, which costs one call. The user's
+ruling still wins.

@@ -280,6 +280,52 @@ public sealed class ExtractionTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A session re-read because some of its facts were deleted under it comes back whole.
+    /// </summary>
+    /// <remarks>
+    /// What 011_refill_lost_facts.sql queues after a merge had deleted half a run's facts by
+    /// cascade. The job's hash is extended, so this is a new extract rather than the old one again —
+    /// under the old hash its fact ids would be the survivors' ids, and the insert would fail.
+    /// </remarks>
+    [Fact]
+    public async Task A_session_read_again_after_losing_facts_gets_them_back()
+    {
+        var (save, sessionId) = Seeded();
+
+        using (save)
+        {
+            var messageId = save.Count("SELECT min(id) FROM message;");
+
+            string Fact(string predicate, string value) => $$"""
+                {"subject_person":"p_them","predicate":"{{predicate}}","object":"{{value}}",
+                 "claim":"Sam {{predicate}} {{value}}.","confidence":0.9,
+                 "message_ids":[{{messageId}}]}
+                """;
+
+            string Both() => Calls(
+                (FactTools.RecordFact, Fact("works_at", "Acme")),
+                (FactTools.RecordFact, Fact("lives_in", "Lisbon")));
+
+            await Runner(save, Both()).RunAsync(Settings(), sessionId, "hash-1");
+
+            // What a merge used to do to the half of a run that was about the merged person.
+            save.Execute("DELETE FROM fact WHERE predicate = 'lives_in';");
+
+            var report = await Runner(save, Both()).RunAsync(Settings(), sessionId, "hash-1|refill-011");
+
+            Assert.Equal(ExtractionOutcome.Written, report.Outcome);
+            Assert.Equal(
+                2, save.Count("SELECT count(*) FROM fact WHERE retracted_utc IS NULL;"));
+            Assert.Equal(
+                1, save.Count("SELECT count(*) FROM fact WHERE predicate = 'lives_in' AND retracted_utc IS NULL;"));
+
+            // The survivor of the first run stops being believed; the re-read's copy replaces it.
+            Assert.Equal(
+                1, save.Count("SELECT count(*) FROM fact WHERE retracted_utc IS NOT NULL;"));
+        }
+    }
+
     [Fact]
     public async Task Superseding_closes_the_old_fact_and_dates_it()
     {

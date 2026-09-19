@@ -49,6 +49,8 @@ public sealed class IdentityMerger(Database database)
             }
         }
 
+        var previousPersonId = PersonOf(connection, transaction, identityId);
+
         using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -65,6 +67,15 @@ public sealed class IdentityMerger(Database database)
             {
                 throw new InvalidOperationException($"No such identity: '{identityId}'.");
             }
+        }
+
+        // Moving someone's last account is merging the whole person, and what was learned about
+        // them has to go where they went. Moving one of several leaves them in place, facts and all.
+        if (previousPersonId is not null
+            && !string.Equals(previousPersonId, personId, StringComparison.Ordinal)
+            && !HasIdentities(connection, transaction, previousPersonId))
+        {
+            MoveKnowledge(connection, transaction, previousPersonId, personId);
         }
 
         RemoveEmptyPeople(connection, transaction);
@@ -131,8 +142,108 @@ public sealed class IdentityMerger(Database database)
             update.ExecuteNonQuery();
         }
 
+        MoveKnowledge(connection, transaction, sourcePersonId, targetPersonId);
         RemoveEmptyPeople(connection, transaction);
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Carries what was learned about one person over to the person they turned out to be.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this a merge deleted it. The emptied person is removed, <c>fact</c> cascades from
+    /// <c>person</c>, and the facts went with them — while the session they were read from kept its
+    /// extract, so it counted as read and was never read again. Everything the model had said
+    /// about someone vanished the moment their accounts were put together, and nothing would bring
+    /// it back (011_refill_lost_facts.sql re-reads what was lost that way before this existed).
+    /// </para>
+    /// <para>
+    /// Repointing the subject is not the rewrite §7 forbids: the claim, its citations and both time
+    /// axes are untouched, exactly as a merge leaves a message's sender alone and moves the identity
+    /// instead. Both sets of facts now sit on one person, where the merge step finds the ones that
+    /// say the same thing.
+    /// </para>
+    /// <para>
+    /// A fact about a pair moves to the same pair with the target in it, joining that edge if there
+    /// already is one. A fact about the source and the target <i>together</i> is left to go: it
+    /// describes a relationship between two accounts of one human, which the merge has just said
+    /// does not exist.
+    /// </para>
+    /// <para>
+    /// Diary entries and rollups are left to go too. They are prose written from the facts, the
+    /// target's are out of date the moment these arrive, and the diary planner writes them again
+    /// from the merged set — two of them for one person and month would be worse than none.
+    /// </para>
+    /// </remarks>
+    private static void MoveKnowledge(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        string sourcePersonId,
+        string targetPersonId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE fact SET subject_person_id = $target WHERE subject_person_id = $source;
+
+            -- An edge from the source to someone the target already has an edge with: its facts join
+            -- that edge, and the source's copy goes with the source.
+            UPDATE fact
+            SET subject_edge_id = keep.id
+            FROM person_edge AS moving
+            JOIN person_edge AS keep
+              ON keep.person_a_id = min($target, iif(moving.person_a_id = $source, moving.person_b_id, moving.person_a_id))
+             AND keep.person_b_id = max($target, iif(moving.person_a_id = $source, moving.person_b_id, moving.person_a_id))
+            WHERE fact.subject_edge_id = moving.id
+              AND $source IN (moving.person_a_id, moving.person_b_id)
+              AND $target NOT IN (moving.person_a_id, moving.person_b_id);
+
+            -- Any other edge simply becomes the target's, kept in canonical order.
+            UPDATE person_edge
+            SET person_a_id = min($target, iif(person_a_id = $source, person_b_id, person_a_id)),
+                person_b_id = max($target, iif(person_a_id = $source, person_b_id, person_a_id))
+            WHERE $source IN (person_a_id, person_b_id)
+              AND $target NOT IN (person_a_id, person_b_id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM person_edge AS keep
+                  WHERE keep.person_a_id = min($target, iif(person_edge.person_a_id = $source, person_edge.person_b_id, person_edge.person_a_id))
+                    AND keep.person_b_id = max($target, iif(person_edge.person_a_id = $source, person_edge.person_b_id, person_edge.person_a_id)));
+
+            -- Queued work about someone who is about to stop existing. The planner queues it again
+            -- for the target, whose facts have just changed.
+            DELETE FROM ai_job WHERE subject_kind = 'person' AND subject_id = $source;
+            """;
+        command.Parameters.AddWithValue("$source", sourcePersonId);
+        command.Parameters.AddWithValue("$target", targetPersonId);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>The person an identity belongs to now, or null for an identity that is not one.</summary>
+    private static string? PersonOf(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        string identityId)
+    {
+        using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = "SELECT person_id FROM identity_person WHERE identity_id = $identity;";
+        read.Parameters.AddWithValue("$identity", identityId);
+
+        return read.ExecuteScalar() as string;
+    }
+
+    private static bool HasIdentities(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        string personId)
+    {
+        using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = "SELECT EXISTS (SELECT 1 FROM identity_person WHERE person_id = $person);";
+        read.Parameters.AddWithValue("$person", personId);
+
+        return read.ExecuteScalar() is long found && found == 1;
     }
 
     /// <summary>Reads a person's owner flag, refusing an id that is not one.</summary>

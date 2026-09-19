@@ -41,6 +41,7 @@ public sealed class MigrationTests
         ["008_facts.sql"] = "89409a7d224a2a237650005d5b6fc84ceea134a016494313000f9cca74cc561b",
         ["009_ai_complete.sql"] = "99bd5aedf4d9d8dbe028962f03ddca706c45f65edf6b835cf34056cb8ecbeba4",
         ["010_sync.sql"] = "e0ed0a922af101cd08ed8b902b200b99183c3ae71285174178eea0ff458f3ca2",
+        ["011_refill_lost_facts.sql"] = "27bf0ec5545b89b88f71b1d03e4575b25f2b91ba11ea2cb2cd9db629a7cae947",
     };
 
     /// <summary>
@@ -210,7 +211,8 @@ public sealed class MigrationTests
             DELETE FROM schema_migration
             WHERE name IN ('003_search.sql', '004_provenance.sql', '005_merge_suggestions.sql',
                            '006_ai_interaction.sql', '007_ai_jobs.sql',
-                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql');
+                           '008_facts.sql', '009_ai_complete.sql', '010_sync.sql',
+                           '011_refill_lost_facts.sql');
             """);
     }
 
@@ -229,7 +231,8 @@ public sealed class MigrationTests
         Assert.Equal(SchemaState.Behind, status.State);
         Assert.True(status.CanUpgrade);
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], status.Pending);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql",
+             "011_refill_lost_facts.sql"], status.Pending);
     }
 
     /// <summary>
@@ -248,7 +251,8 @@ public sealed class MigrationTests
         var error = Assert.Throws<SchemaUpgradeRequiredException>(() => db.Database.Migrate());
 
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], error.Pending);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql",
+             "011_refill_lost_facts.sql"], error.Pending);
         Assert.Equal(db.Database.DatabasePath, error.SavePath);
 
         // Still behind: asking must not be the same as doing.
@@ -265,7 +269,8 @@ public sealed class MigrationTests
         var applied = db.Database.Upgrade(backup);
 
         Assert.Equal(["003_search.sql", "004_provenance.sql", "005_merge_suggestions.sql", "006_ai_interaction.sql",
-             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql"], applied);
+             "007_ai_jobs.sql", "008_facts.sql", "009_ai_complete.sql", "010_sync.sql",
+             "011_refill_lost_facts.sql"], applied);
         Assert.Equal(SchemaState.UpToDate, db.Database.Inspect().State);
 
         // The copy is a database in its own right, still standing where the save did.
@@ -361,6 +366,68 @@ public sealed class MigrationTests
 
         Assert.Null(db.Scalar<string>("SELECT created_by FROM save_provenance;"));
         Assert.Equal(Database.AppVersion, db.Scalar<string>("SELECT upgraded_by FROM save_provenance;"));
+    }
+
+    /// <summary>
+    /// A conversation whose facts a merge deleted is put back in the queue; one that kept its facts
+    /// is not.
+    /// </summary>
+    /// <remarks>
+    /// Before IdentityMerger carried facts over, merging a person deleted theirs by cascade while
+    /// the session they came from kept its extract, and so was never read again. The rows are gone
+    /// and nothing records what they said, so reading again is the only repair there is.
+    /// </remarks>
+    [Fact]
+    public void Upgrading_requeues_the_conversations_whose_facts_a_merge_deleted()
+    {
+        using var db = new TempDatabase();
+        Seed.Basics(db);
+        Seed.People(db);
+
+        db.Execute($"""
+            INSERT INTO session (id, thread_id, started_at_unix, ended_at_unix, message_count, member_hash, segmenter_version)
+            VALUES ('s-lost', '{Seed.ThreadId}', 1, 2, 5, 'm1', 'v1'),
+                   ('s-kept', '{Seed.ThreadId}', 3, 4, 5, 'm2', 'v1'),
+                   ('s-edited', '{Seed.ThreadId}', 5, 6, 5, 'm3', 'v1');
+
+            -- Each run wrote two facts.
+            INSERT INTO derived_artifact (id, kind, source_session_id, engine, model, model_version,
+                                          prompt_version, payload_json, input_hash, created_utc)
+            VALUES ('da-lost', 'session_extract', 's-lost', 'llm', 'm', 'v', 'p1', json_object('facts', 2), 'm1|p1', '2020-01-01T00:00:00Z'),
+                   ('da-kept', 'session_extract', 's-kept', 'llm', 'm', 'v', 'p1', json_object('facts', 2), 'm2|p1', '2020-01-01T00:00:00Z'),
+                   ('da-edited', 'session_extract', 's-edited', 'llm', 'm', 'v', 'p1', json_object('facts', 2), 'm3|p1', '2020-01-01T00:00:00Z');
+
+            -- s-lost keeps only its fact about the owner: the one about Sam went with a merge.
+            -- s-edited lost one too, and has a user's edit of the survivor, which must not hide it.
+            INSERT INTO fact (id, subject_person_id, predicate, object_text, claim_text, evidence_kind,
+                              origin_kind, confidence, asserted_utc, derived_artifact_id, source)
+            VALUES ('f-lost-1', '{Seed.OwnerPersonId}', 'p', 'o', 'c', 'self_report', 'dm', 0.9, '2020-01-01T00:00:00Z', 'da-lost', 'extracted'),
+                   ('f-kept-1', '{Seed.OwnerPersonId}', 'p', 'o', 'c', 'self_report', 'dm', 0.9, '2020-01-01T00:00:00Z', 'da-kept', 'extracted'),
+                   ('f-kept-2', '{Seed.SamPersonId}', 'p', 'o', 'c', 'self_report', 'dm', 0.9, '2020-01-01T00:00:00Z', 'da-kept', 'user_deleted'),
+                   ('f-edited-1', '{Seed.OwnerPersonId}', 'p', 'o', 'c', 'self_report', 'dm', 0.9, '2020-01-01T00:00:00Z', 'da-edited', 'extracted'),
+                   ('f-edited-2', '{Seed.OwnerPersonId}', 'p', 'o2', 'c2', 'self_report', 'dm', 1.0, '2020-01-02T00:00:00Z', 'da-edited', 'user_edited');
+
+            INSERT INTO ai_job (kind, subject_kind, subject_id, state, attempts, input_hash, created_utc, updated_utc)
+            VALUES ('extract', 'session', 's-lost', 'done', 1, 'm1|p1', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z'),
+                   ('extract', 'session', 's-kept', 'done', 1, 'm2|p1', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z'),
+                   ('extract', 'session', 's-edited', 'done', 1, 'm3|p1', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z');
+
+            DELETE FROM schema_migration WHERE name = '011_refill_lost_facts.sql';
+            """);
+
+        db.Database.Upgrade(backupPath: null);
+
+        Assert.Equal("pending", db.Scalar<string>("SELECT state FROM ai_job WHERE subject_id = 's-lost';"));
+        Assert.Equal("pending", db.Scalar<string>("SELECT state FROM ai_job WHERE subject_id = 's-edited';"));
+        Assert.Equal("done", db.Scalar<string>("SELECT state FROM ai_job WHERE subject_id = 's-kept';"));
+
+        // A new hash, so the re-read is a new extract that retracts the survivors rather than one
+        // that lands on the old extract's id and collides with them.
+        Assert.NotEqual("m1|p1", db.Scalar<string>("SELECT input_hash FROM ai_job WHERE subject_id = 's-lost';"));
+        Assert.Equal("m2|p1", db.Scalar<string>("SELECT input_hash FROM ai_job WHERE subject_id = 's-kept';"));
+
+        // Nothing that was there is touched.
+        Assert.Equal(5, db.Scalar<long>("SELECT count(*) FROM fact;"));
     }
 
     [Fact]
